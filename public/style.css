@@ -7,8 +7,6 @@ html, body {
   color: #fff;
 }
 body { overflow: hidden; }
-/* Safety net: if content genuinely can't fit (very long question text etc.)
-   allow vertical scroll rather than clipping content off-screen. */
 body.allow-scroll { overflow-y: auto; }
 
 .container {
@@ -16,6 +14,8 @@ body.allow-scroll { overflow-y: auto; }
   height: 100dvh;
   margin: 0 auto;
   padding: 16px;
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-left: max(16px, env(safe-area-inset-left));
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -26,9 +26,8 @@ h1 { font-size: clamp(1.4rem, 3.2vh, 2.2rem); margin: 4px 0; flex-shrink: 0; }
 .assist-note { opacity: 0.85; font-size: 0.85rem; margin-top: 8px; }
 .field-label { display:block; text-align:left; font-size:0.85rem; margin: 8px 0 4px 4px; opacity:0.85; }
 
-/* Hide the title / free up space while an active game screen is showing */
 body.in-game h1 { display: none; }
-body.in-game .container { padding: 8px; }
+body.in-game .container { padding: 8px; padding-right: max(8px, env(safe-area-inset-right)); padding-left: max(8px, env(safe-area-inset-left)); }
 
 .card {
   background: rgba(255,255,255,0.08);
@@ -93,7 +92,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   font-size: 0.9rem;
 }
 
-/* ---------- HOST: FULL LANDSCAPE / PROJECTOR MODE, NO SCROLL ---------- */
+/* ---------- HOST: FULL LANDSCAPE / PROJECTOR MODE (16:9), NO SCROLL ---------- */
 .host-body { overflow: hidden; }
 .host-container { max-width: 100%; padding: 10px; height: 100dvh; }
 
@@ -110,7 +109,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .lobby-left, .lobby-right { flex: 1; min-width: 260px; }
 .lobby-label { font-size: 1rem; opacity: 0.9; margin-bottom: 6px; }
 .qr-image {
-  width: min(260px, 34vh, 70vw);
+  width: min(280px, 34vh, 70vw);
   height: auto;
   background: #fff;
   padding: 10px;
@@ -118,60 +117,64 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .lobby-url { margin-top: 6px; font-size: 0.9rem; opacity: 0.9; word-break: break-all; }
 
-/* Fills the remaining viewport and fits everything without page scroll.
-   Each row is auto-sized except the answers grid, which takes whatever
-   vertical space remains. */
+/* IMPORTANT: uses FLEXBOX (column direction), not CSS grid-template-rows.
+   Flexbox reliably stacks children top-to-bottom in source order. (A prior
+   version used display:grid with only grid-template-rows and no
+   grid-template-columns defined -- without explicit columns, grid's
+   auto-placement lays items out side-by-side in implicit columns instead of
+   stacking them, which is why things previously bunched up horizontally.) */
 .fullscreen-view {
   height: 100dvh;
   width: 100%;
-  display: grid;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-items: center;
-  gap: clamp(4px, 1vh, 10px);
-  padding: 6px 14px;
+  justify-content: center;
+  gap: clamp(6px, 1.4vh, 16px);
+  padding: 10px 3vw;
   overflow: hidden;
 }
-#reviewView.fullscreen-view {
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-}
 
-.q-meta { font-size: clamp(1rem, 2.6vh, 1.4rem); font-weight: 700; opacity: 0.9; margin: 0; }
+.q-meta { font-size: clamp(1.1rem, 3vh, 1.6rem); font-weight: 700; opacity: 0.9; margin: 0; flex: 0 0 auto; }
 
 .bilingual-question {
   background: #fff;
   color: #222;
-  border-radius: 16px;
-  padding: clamp(10px, 1.8vh, 24px);
-  width: min(1100px, 92vw);
-  max-height: 34dvh;
+  border-radius: 18px;
+  padding: clamp(12px, 2.2vh, 28px) clamp(16px, 3vw, 40px);
+  width: 96vw;
+  max-width: 1500px;
+  max-height: 32dvh;
   overflow-y: auto;
+  flex: 0 1 auto;
 }
-.q-en { font-size: clamp(1.2rem, 3.6vh, 2.4rem); font-weight: 800; line-height: 1.2; }
-.q-l2 { font-size: clamp(1rem, 2.4vh, 1.7rem); font-weight: 600; color: #5a3ca8; margin-top: 6px; line-height: 1.25; }
+.q-en { font-size: clamp(1.4rem, 4.4vh, 2.8rem); font-weight: 800; line-height: 1.2; overflow-wrap: break-word; }
+.q-l2 { font-size: clamp(1.1rem, 3vh, 2rem); font-weight: 600; color: #5a3ca8; margin-top: 8px; line-height: 1.25; overflow-wrap: break-word; }
 
 .timer {
-  font-size: clamp(1.1rem, 2.8vh, 1.8rem);
+  font-size: clamp(1.2rem, 3.4vh, 2rem);
   font-weight: 800;
   margin: 0;
+  flex: 0 0 auto;
 }
-.answer-count { font-size: clamp(0.85rem, 2vh, 1.1rem); opacity: 0.9; margin: 0; }
+.answer-count { font-size: clamp(0.9rem, 2.2vh, 1.2rem); opacity: 0.9; margin: 0; flex: 0 0 auto; }
 
 .answers-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-auto-rows: 1fr;
-  gap: clamp(8px, 1.4vh, 16px);
-  width: min(1100px, 92vw);
-  height: 100%;
+  grid-template-rows: 1fr 1fr;
+  gap: clamp(10px, 1.6vh, 20px);
+  width: 96vw;
+  max-width: 1500px;
+  flex: 1 1 auto;
   min-height: 0;
 }
 
 .answer-btn {
-  padding: clamp(8px, 1.6vh, 20px) 14px;
-  font-size: clamp(0.9rem, 2.2vh, 1.4rem);
+  padding: clamp(10px, 1.8vh, 24px) clamp(14px, 1.6vw, 26px);
+  font-size: clamp(1rem, 2.6vh, 1.7rem);
   font-weight: 700;
-  border-radius: 14px;
+  border-radius: 16px;
   color: #fff;
   border: none;
   cursor: pointer;
@@ -180,6 +183,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   display: flex;
   flex-direction: column;
   justify-content: center;
+  min-width: 0;
+  min-height: 0;
 }
 .answer-btn:nth-child(1) { background: #e21b3c; }
 .answer-btn:nth-child(2) { background: #1368ce; }
@@ -187,16 +192,18 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .answer-btn:nth-child(4) { background: #26890c; }
 .answer-btn.selected { outline: 4px solid #fff; }
 .answer-btn:disabled { opacity: 0.6; }
-.answer-btn .opt-l2 { display:block; font-size: 0.78em; font-weight: 500; opacity: 0.9; margin-top: 3px; }
+.answer-btn .opt-en { overflow-wrap: break-word; }
+.answer-btn .opt-l2 { display:block; font-size: 0.75em; font-weight: 500; opacity: 0.9; margin-top: 4px; overflow-wrap: break-word; }
 .static-answer { cursor: default; }
 
-.review-answer { position: relative; padding-bottom: clamp(30px, 5vh, 46px); }
+.review-answer { position: relative; padding-bottom: clamp(34px, 5.5vh, 50px); }
 .correct-option { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #26890c; }
-.tally-bar { position:absolute; bottom:8px; left:14px; right:14px; height:8px; background:rgba(0,0,0,0.25); border-radius:6px; overflow:hidden; }
+.tally-bar { position:absolute; bottom:26px; left:16px; right:16px; height:10px; background:rgba(0,0,0,0.25); border-radius:6px; overflow:hidden; }
 .tally-fill { height:100%; background:#fff; }
-.tally-count { position:absolute; bottom:-18px; left:14px; font-size:0.75rem; opacity:0.85; color:#fff; }
-.review-nav { display:flex; gap:10px; justify-content:center; flex-wrap: wrap; max-width: 700px; margin: 0 auto; }
-.review-nav button { width: auto; padding: 10px 20px; }
+.tally-count { position:absolute; bottom:6px; left:16px; font-size:0.78rem; opacity:0.9; color:#fff; }
+
+.review-nav { display:flex; gap:14px; justify-content:center; flex-wrap: wrap; max-width: 700px; margin: 0 auto; flex: 0 0 auto; }
+.review-nav button { width: auto; padding: 12px 26px; }
 
 .fs-btn {
   position: fixed;
@@ -210,14 +217,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   z-index: 50;
 }
 
-/* ---------- PLAYER: fits phone screen without scrolling ---------- */
+/* ---------- PLAYER: fits phone screen without scrolling / edge-bleed ---------- */
 body.in-game .card {
   width: 100%;
   height: 100dvh;
   max-width: 100%;
   margin: 0;
   border-radius: 0;
-  padding: 10px 14px;
+  padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -236,9 +243,10 @@ body.in-game .card {
   max-height: 32dvh;
   overflow-y: auto;
   flex-shrink: 0;
+  overflow-wrap: break-word;
 }
-.player-bilingual .q-en { font-size: clamp(1rem, 3vh, 1.35rem); }
-.player-bilingual .q-l2 { font-size: clamp(0.85rem, 2.2vh, 1.05rem); }
+.player-bilingual .q-en { font-size: clamp(1rem, 3vh, 1.35rem); overflow-wrap: break-word; }
+.player-bilingual .q-l2 { font-size: clamp(0.85rem, 2.2vh, 1.05rem); overflow-wrap: break-word; }
 
 #questionView, #lockedView, #reviewView { height: 100dvh; }
 #questionView .card { justify-content: space-between; }
@@ -246,9 +254,10 @@ body.in-game .card {
 #answersGrid, #reviewAnswersGrid {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-auto-rows: 1fr;
+  grid-template-rows: 1fr 1fr;
   gap: clamp(6px, 1.4vh, 12px);
 }
 
@@ -259,11 +268,12 @@ body.in-game .card {
   justify-content: center;
   gap: 1px;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
 .opt-shape { font-size: clamp(1rem, 2.6vh, 1.3rem); }
-.opt-en { font-weight: 700; font-size: clamp(0.85rem, 2.1vh, 1.05rem); }
-.opt-l2 { font-size: clamp(0.72rem, 1.8vh, 0.9rem); opacity: 0.9; }
+.opt-en { font-weight: 700; font-size: clamp(0.85rem, 2.1vh, 1.05rem); overflow-wrap: break-word; }
+.opt-l2 { font-size: clamp(0.72rem, 1.8vh, 0.9rem); opacity: 0.9; overflow-wrap: break-word; }
 
 .locked-banner { background: #1368ce; }
 .banner {
