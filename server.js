@@ -9,12 +9,19 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// Render sets PORT automatically. Always bind to 0.0.0.0 (not "localhost")
+// so the platform's load balancer can reach the container.
 const PORT = process.env.PORT || 3000;
+const HOST = '0.0.0.0';
+
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 const QUESTIONS_SHEET = 'Questions';
 const RESULTS_SHEET = 'Results';
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Simple health check endpoint (useful for Render health checks / uptime pings)
+app.get('/healthz', (req, res) => res.status(200).send('ok'));
 
 // ---------------------------------------------------------------------------
 // Google Sheets helpers
@@ -24,10 +31,32 @@ let sheetsClientPromise = null;
 function getSheetsClient() {
   if (!sheetsClientPromise) {
     sheetsClientPromise = (async () => {
-      const auth = new google.auth.GoogleAuth({
-        keyFile: path.join(__dirname, 'credentials.json'),
+      let authOptions = {
         scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-      });
+      };
+
+      // Preferred for hosting on Render: paste the ENTIRE credentials.json
+      // content into a single environment variable called
+      // GOOGLE_CREDENTIALS_JSON (as one-line JSON). This avoids ever
+      // committing the secret file to GitHub.
+      if (process.env.GOOGLE_CREDENTIALS_JSON) {
+        let creds;
+        try {
+          creds = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+        } catch (err) {
+          throw new Error(
+            'GOOGLE_CREDENTIALS_JSON env var is not valid JSON. Re-check it was pasted as a single line with no extra quotes.'
+          );
+        }
+        authOptions.credentials = creds;
+      } else if (process.env.SPREADSHEET_ID) {
+        // Fallback for local development only: read credentials.json from disk.
+        authOptions.keyFile = path.join(__dirname, 'credentials.json');
+      } else {
+        throw new Error('No Google credentials configured. Set GOOGLE_CREDENTIALS_JSON (Render) or provide credentials.json (local).');
+      }
+
+      const auth = new google.auth.GoogleAuth(authOptions);
       const client = await auth.getClient();
       return google.sheets({ version: 'v4', auth: client });
     })();
@@ -36,6 +65,9 @@ function getSheetsClient() {
 }
 
 async function loadQuestionsFromSheet() {
+  if (!SPREADSHEET_ID) {
+    throw new Error('SPREADSHEET_ID environment variable is not set.');
+  }
   const sheets = await getSheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
@@ -75,11 +107,11 @@ async function appendResultsToSheet(gamePin, players) {
 // ---------------------------------------------------------------------------
 // In-memory game state
 // ---------------------------------------------------------------------------
-// games[pin] = {
-//   pin, hostSocketId, questions, currentIndex, state,
-//   players: { socketId: { name, score, currentAnswer, answerTime } },
-//   questionStartedAt, questionTimer
-// }
+// NOTE: Render's free tier can spin down an idle instance and restart it on
+// the next request ("cold start"). That's fine for typical use (games are
+// short-lived and someone is actively connected), but if the app sits fully
+// idle for a long time between games, in-memory game state resets. For
+// always-on live events, use a paid Render instance so it doesn't sleep.
 const games = {};
 
 function generatePin() {
@@ -114,7 +146,6 @@ function sendQuestion(game) {
   const q = game.questions[game.currentIndex];
   if (!q) return endGame(game);
 
-  // reset answers for this round
   Object.values(game.players).forEach((p) => {
     p.currentAnswer = null;
     p.answerTime = null;
@@ -142,8 +173,6 @@ function revealAnswer(game) {
   game.state = 'reveal';
 
   const q = game.questions[game.currentIndex];
-
-  // score anyone who hasn't been scored yet defensively (already scored on answer)
   const board = leaderboard(game);
 
   io.to(game.pin).emit('question:reveal', {
@@ -169,7 +198,6 @@ async function endGame(game) {
 // Socket.io game logic
 // ---------------------------------------------------------------------------
 io.on('connection', (socket) => {
-  // ----- HOST -----
   socket.on('host:create', async () => {
     try {
       const questions = await loadQuestionsFromSheet();
@@ -194,7 +222,7 @@ io.on('connection', (socket) => {
       socket.emit('host:created', { pin, questionCount: questions.length });
     } catch (err) {
       console.error(err);
-      socket.emit('error:message', 'Could not load questions from Google Sheets. Check credentials/spreadsheet ID.');
+      socket.emit('error:message', `Could not load questions from Google Sheets: ${err.message}`);
     }
   });
 
@@ -225,7 +253,6 @@ io.on('connection', (socket) => {
     revealAnswer(game);
   });
 
-  // ----- PLAYER -----
   socket.on('player:join', ({ pin, name }) => {
     const game = games[pin];
     if (!game) {
@@ -251,7 +278,7 @@ io.on('connection', (socket) => {
     const game = games[pin];
     if (!game || game.state !== 'question') return;
     const player = game.players[socket.id];
-    if (!player || player.currentAnswer !== null) return; // already answered
+    if (!player || player.currentAnswer !== null) return;
 
     const q = game.questions[game.currentIndex];
     const elapsed = (Date.now() - game.questionStartedAt) / 1000;
@@ -273,12 +300,10 @@ io.on('connection', (socket) => {
       total: Object.keys(game.players).length,
     });
 
-    // if everyone answered, reveal early
     const allAnswered = Object.values(game.players).every((p) => p.currentAnswer !== null);
     if (allAnswered) revealAnswer(game);
   });
 
-  // ----- DISCONNECT -----
   socket.on('disconnect', () => {
     const pin = socket.data.pin;
     const game = games[pin];
@@ -294,6 +319,6 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Kahoot-clone server running on http://localhost:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`Kahoot-clone server running on http://${HOST}:${PORT}`);
 });
