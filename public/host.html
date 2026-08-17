@@ -6,76 +6,115 @@
 <title>Host - QuizClash</title>
 <link rel="stylesheet" href="style.css" />
 </head>
-<body>
-  <div class="container">
-    <h1>🧠 QuizClash — Host</h1>
+<body class="host-body">
+  <div class="container host-container">
 
-    <!-- LOBBY / CREATE -->
+    <!-- CREATE -->
     <div id="createView" class="card">
+      <h1>QuizClash — Host</h1>
+      <label class="field-label">Session Name (e.g. "Team A - Morning")</label>
+      <input type="text" id="sessionNameInput" placeholder="Session name" maxlength="60" />
+      <label class="field-label">Question Sheet Tab</label>
+      <input type="text" id="sheetTabInput" placeholder="Questions" value="Questions" />
       <button id="createBtn">Create Game</button>
-      <p id="createError" style="color:#ffd6d6;"></p>
+      <p id="createError" class="error-text"></p>
     </div>
 
-    <!-- LOBBY / WAITING FOR PLAYERS -->
-    <div id="lobbyView" class="card" style="display:none;">
-      <p>Players join at <strong id="joinUrl"></strong> using PIN:</p>
-      <div class="pin-display" id="pinDisplay">------</div>
-      <div class="player-list" id="playerList"></div>
-      <button id="startBtn" style="margin-top:20px;">Start Game</button>
-    </div>
-
-    <!-- QUESTION VIEW -->
-    <div id="questionView" style="display:none;">
-      <div class="card">
-        <p id="questionMeta"></p>
-        <div class="question-box" id="questionText"></div>
-        <div class="timer" id="timerDisplay"></div>
-        <p id="answerCount"></p>
-        <div class="answers-grid" id="hostAnswersGrid"></div>
+    <!-- LOBBY -->
+    <div id="lobbyView" class="card lobby-landscape" style="display:none;">
+      <div class="lobby-left">
+        <p class="lobby-label">Scan to join</p>
+        <img id="qrImg" class="qr-image" alt="QR code to join" />
+        <p class="lobby-url" id="joinUrlText"></p>
+      </div>
+      <div class="lobby-right">
+        <p class="lobby-label">Or enter PIN at <span id="joinUrl"></span></p>
+        <div class="pin-display" id="pinDisplay">------</div>
+        <p class="session-label" id="sessionLabel"></p>
+        <div class="player-list" id="playerList"></div>
+        <button id="startBtn" class="start-btn">Start Game</button>
       </div>
     </div>
 
-    <!-- REVEAL VIEW -->
-    <div id="revealView" class="card" style="display:none;">
-      <div class="banner correct-banner" id="correctAnswerBanner"></div>
-      <h3>Leaderboard</h3>
-      <div id="leaderboardList"></div>
-      <button id="nextBtn" style="margin-top:16px;">Next Question</button>
+    <!-- QUESTION VIEW -->
+    <div id="questionView" class="fullscreen-view" style="display:none;">
+      <p id="questionMeta" class="q-meta"></p>
+      <div class="bilingual-question">
+        <div class="q-en" id="questionTextEn"></div>
+        <div class="q-l2" id="questionTextL2"></div>
+      </div>
+      <div class="timer" id="timerDisplay"></div>
+      <p id="answerCount" class="answer-count"></p>
+      <div class="answers-grid host-answers-grid" id="hostAnswersGrid"></div>
+      <button id="closeQuestionBtn" class="secondary-btn">Close Question Now</button>
+    </div>
+
+    <!-- CLOSED (waiting to advance) -->
+    <div id="closedView" class="fullscreen-view" style="display:none;">
+      <h2>🔒 Answers locked in</h2>
+      <p>Correct answer and discussion happen after the full quiz.</p>
+      <button id="nextBtn" class="start-btn">Next Question</button>
     </div>
 
     <!-- GAME OVER -->
     <div id="overView" class="card" style="display:none;">
       <h2>🏆 Final Results</h2>
       <div id="finalLeaderboard"></div>
-      <p style="margin-top:12px;">Results have been saved to the Google Sheet.</p>
+      <p class="saved-note">Results have been saved to the Google Sheet (summary + per-question detail).</p>
+      <button id="startReviewBtn" class="start-btn">Start Answer Discussion</button>
       <a class="link-btn" href="index.html">Back to home</a>
     </div>
 
-    <p id="hostErrorMsg" style="color:#ffd6d6;"></p>
+    <!-- REVIEW / DISCUSSION VIEW -->
+    <div id="reviewView" class="fullscreen-view" style="display:none;">
+      <p id="reviewMeta" class="q-meta"></p>
+      <div class="bilingual-question">
+        <div class="q-en" id="reviewTextEn"></div>
+        <div class="q-l2" id="reviewTextL2"></div>
+      </div>
+      <div class="answers-grid host-answers-grid" id="reviewAnswersGrid"></div>
+      <div class="review-nav">
+        <button id="reviewPrevBtn" class="secondary-btn">◀ Previous</button>
+        <button id="reviewNextBtn" class="secondary-btn">Next ▶</button>
+        <a class="link-btn" href="index.html">Finish</a>
+      </div>
+    </div>
+
+    <p id="hostErrorMsg" class="error-text"></p>
+    <button id="fullscreenBtn" class="fs-btn" title="Toggle fullscreen for projector">⛶</button>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-    let currentPin = null;
 
     const createView = document.getElementById('createView');
     const lobbyView = document.getElementById('lobbyView');
     const questionView = document.getElementById('questionView');
-    const revealView = document.getElementById('revealView');
+    const closedView = document.getElementById('closedView');
     const overView = document.getElementById('overView');
+    const reviewView = document.getElementById('reviewView');
 
     document.getElementById('joinUrl').textContent = window.location.origin + '/player.html';
 
-    document.getElementById('createBtn').onclick = () => {
-      socket.emit('host:create');
+    document.getElementById('fullscreenBtn').onclick = () => {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+      else document.exitFullscreen();
     };
 
-    socket.on('host:created', ({ pin, questionCount }) => {
-      currentPin = pin;
+    document.getElementById('createBtn').onclick = () => {
+      const sessionName = document.getElementById('sessionNameInput').value.trim() || 'Untitled Session';
+      const sheetTab = document.getElementById('sheetTabInput').value.trim() || 'Questions';
+      socket.emit('host:create', { sessionName, sheetTab, origin: window.location.origin });
+    };
+
+    socket.on('host:created', ({ pin, qrDataUrl, joinUrl, sessionName }) => {
       document.getElementById('pinDisplay').textContent = pin;
+      document.getElementById('sessionLabel').textContent = `Session: ${sessionName}`;
+      document.getElementById('joinUrlText').textContent = joinUrl.replace(/^https?:\/\//, '');
+      if (qrDataUrl) document.getElementById('qrImg').src = qrDataUrl;
       createView.style.display = 'none';
-      lobbyView.style.display = 'block';
+      lobbyView.style.display = 'flex';
     });
 
     socket.on('host:playerJoined', ({ players }) => {
@@ -89,29 +128,30 @@
       });
     });
 
-    document.getElementById('startBtn').onclick = () => {
-      socket.emit('host:start');
-    };
+    document.getElementById('startBtn').onclick = () => socket.emit('host:start');
+    document.getElementById('closeQuestionBtn').onclick = () => socket.emit('host:closeQuestion');
+    document.getElementById('nextBtn').onclick = () => socket.emit('host:next');
 
     let timerInterval = null;
 
-    socket.on('question:show', ({ index, total, question, options, timeLimit }) => {
+    socket.on('question:show', ({ index, total, question_en, question_l2, options_en, options_l2, timeLimit }) => {
       lobbyView.style.display = 'none';
-      revealView.style.display = 'none';
-      questionView.style.display = 'block';
+      closedView.style.display = 'none';
+      overView.style.display = 'none';
+      questionView.style.display = 'flex';
 
       document.getElementById('questionMeta').textContent = `Question ${index + 1} / ${total}`;
-      document.getElementById('questionText').textContent = question;
+      document.getElementById('questionTextEn').textContent = question_en;
+      document.getElementById('questionTextL2').textContent = question_l2 || '';
       document.getElementById('answerCount').textContent = '';
 
       const grid = document.getElementById('hostAnswersGrid');
       grid.innerHTML = '';
-      options.forEach((opt) => {
+      options_en.forEach((opt, i) => {
         if (!opt) return;
         const btn = document.createElement('div');
-        btn.className = 'answer-btn';
-        btn.style.cursor = 'default';
-        btn.textContent = opt;
+        btn.className = 'answer-btn static-answer';
+        btn.innerHTML = `<div class="opt-en">${opt}</div><div class="opt-l2">${options_l2[i] || ''}</div>`;
         grid.appendChild(btn);
       });
 
@@ -130,31 +170,15 @@
       document.getElementById('answerCount').textContent = `${answered}/${total} answered`;
     });
 
-    socket.on('question:reveal', ({ correctText, leaderboard, isLastQuestion }) => {
+    socket.on('question:closed', ({ isLastQuestion }) => {
       if (timerInterval) clearInterval(timerInterval);
       questionView.style.display = 'none';
-      revealView.style.display = 'block';
-
-      document.getElementById('correctAnswerBanner').textContent = `✅ Correct answer: ${correctText}`;
-
-      const lb = document.getElementById('leaderboardList');
-      lb.innerHTML = '';
-      leaderboard.forEach((p, i) => {
-        const row = document.createElement('div');
-        row.className = `leaderboard-item rank-${i}`;
-        row.innerHTML = `<span>#${i + 1} ${p.name}</span><span>${p.score}</span>`;
-        lb.appendChild(row);
-      });
-
+      closedView.style.display = 'flex';
       document.getElementById('nextBtn').textContent = isLastQuestion ? 'Show Final Results' : 'Next Question';
     });
 
-    document.getElementById('nextBtn').onclick = () => {
-      socket.emit('host:next');
-    };
-
     socket.on('game:over', ({ leaderboard }) => {
-      revealView.style.display = 'none';
+      closedView.style.display = 'none';
       overView.style.display = 'block';
       const lb = document.getElementById('finalLeaderboard');
       lb.innerHTML = '';
@@ -166,8 +190,33 @@
       });
     });
 
+    document.getElementById('startReviewBtn').onclick = () => socket.emit('host:reviewStart');
+    document.getElementById('reviewNextBtn').onclick = () => socket.emit('host:reviewNext');
+    document.getElementById('reviewPrevBtn').onclick = () => socket.emit('host:reviewPrev');
+
+    socket.on('review:show', ({ index, total, question_en, question_l2, options_en, options_l2, correctIndex, tally }) => {
+      overView.style.display = 'none';
+      reviewView.style.display = 'flex';
+      document.getElementById('reviewMeta').textContent = `Discussion — Question ${index + 1} / ${total}`;
+      document.getElementById('reviewTextEn').textContent = question_en;
+      document.getElementById('reviewTextL2').textContent = question_l2 || '';
+
+      const grid = document.getElementById('reviewAnswersGrid');
+      grid.innerHTML = '';
+      const totalAnswers = tally.reduce((a, b) => a + b, 0) || 1;
+      options_en.forEach((opt, i) => {
+        if (!opt) return;
+        const btn = document.createElement('div');
+        btn.className = 'answer-btn static-answer review-answer' + (i === correctIndex ? ' correct-option' : '');
+        const pct = Math.round((tally[i] / totalAnswers) * 100);
+        btn.innerHTML = `<div class="opt-en">${opt}${i === correctIndex ? ' ✅' : ''}</div><div class="opt-l2">${options_l2[i] || ''}</div><div class="tally-bar"><div class="tally-fill" style="width:${pct}%"></div></div><div class="tally-count">${tally[i]} response(s)</div>`;
+        grid.appendChild(btn);
+      });
+    });
+
     socket.on('error:message', (msg) => {
       document.getElementById('hostErrorMsg').textContent = msg;
+      document.getElementById('createError').textContent = msg;
     });
   </script>
 </body>

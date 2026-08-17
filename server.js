@@ -4,23 +4,21 @@ const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
 const { google } = require('googleapis');
+const QRCode = require('qrcode');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Render sets PORT automatically. Always bind to 0.0.0.0 (not "localhost")
-// so the platform's load balancer can reach the container.
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
-const QUESTIONS_SHEET = 'Questions';
+const DEFAULT_QUESTIONS_TAB = 'Questions';
 const RESULTS_SHEET = 'Results';
+const RESULTS_DETAIL_SHEET = 'ResultsDetail';
 
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Simple health check endpoint (useful for Render health checks / uptime pings)
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
 
 // ---------------------------------------------------------------------------
@@ -31,26 +29,17 @@ let sheetsClientPromise = null;
 function getSheetsClient() {
   if (!sheetsClientPromise) {
     sheetsClientPromise = (async () => {
-      let authOptions = {
-        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-      };
+      let authOptions = { scopes: ['https://www.googleapis.com/auth/spreadsheets'] };
 
-      // Preferred for hosting on Render: paste the ENTIRE credentials.json
-      // content into a single environment variable called
-      // GOOGLE_CREDENTIALS_JSON (as one-line JSON). This avoids ever
-      // committing the secret file to GitHub.
       if (process.env.GOOGLE_CREDENTIALS_JSON) {
         let creds;
         try {
           creds = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
         } catch (err) {
-          throw new Error(
-            'GOOGLE_CREDENTIALS_JSON env var is not valid JSON. Re-check it was pasted as a single line with no extra quotes.'
-          );
+          throw new Error('GOOGLE_CREDENTIALS_JSON env var is not valid JSON. Re-check it was pasted as a single line.');
         }
         authOptions.credentials = creds;
-      } else if (process.env.SPREADSHEET_ID) {
-        // Fallback for local development only: read credentials.json from disk.
+      } else if (SPREADSHEET_ID) {
         authOptions.keyFile = path.join(__dirname, 'credentials.json');
       } else {
         throw new Error('No Google credentials configured. Set GOOGLE_CREDENTIALS_JSON (Render) or provide credentials.json (local).');
@@ -64,37 +53,39 @@ function getSheetsClient() {
   return sheetsClientPromise;
 }
 
-async function loadQuestionsFromSheet() {
-  if (!SPREADSHEET_ID) {
-    throw new Error('SPREADSHEET_ID environment variable is not set.');
-  }
+// Bilingual question sheet columns (row 1 = header, data starts row 2):
+// A: ID | B: Question_EN | C: Question_L2 |
+// D: OptionA_EN | E: OptionA_L2 | F: OptionB_EN | G: OptionB_L2 |
+// H: OptionC_EN | I: OptionC_L2 | J: OptionD_EN | K: OptionD_L2 |
+// L: CorrectIndex (1-4) | M: TimeLimit (sec) | N: Points
+async function loadQuestionsFromSheet(sheetTab) {
+  if (!SPREADSHEET_ID) throw new Error('SPREADSHEET_ID environment variable is not set.');
+  const tab = (sheetTab || DEFAULT_QUESTIONS_TAB).trim();
   const sheets = await getSheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${QUESTIONS_SHEET}!A2:I`,
+    range: `${tab}!A2:N`,
   });
   const rows = res.data.values || [];
   return rows
-    .filter((r) => r[1]) // must have a question text
+    .filter((r) => r[1])
     .map((r, idx) => ({
       id: r[0] || String(idx + 1),
-      question: r[1],
-      options: [r[2], r[3], r[4], r[5]],
-      correctIndex: parseInt(r[6], 10) - 1, // sheet is 1-indexed
-      timeLimit: parseInt(r[7], 10) || 20, // seconds
-      points: parseInt(r[8], 10) || 1000,
+      question_en: r[1] || '',
+      question_l2: r[2] || '',
+      options_en: [r[3], r[5], r[7], r[9]],
+      options_l2: [r[4], r[6], r[8], r[10]],
+      correctIndex: parseInt(r[11], 10) - 1,
+      timeLimit: parseInt(r[12], 10) || 20,
+      points: parseInt(r[13], 10) || 1000,
     }));
 }
 
-async function appendResultsToSheet(gamePin, players) {
+async function appendSummaryResults(sessionName, pin, players) {
   if (!players.length) return;
   const sheets = await getSheetsClient();
-  const values = players.map((p) => [
-    gamePin,
-    p.name,
-    p.score,
-    new Date().toISOString(),
-  ]);
+  const ts = new Date().toISOString();
+  const values = players.map((p) => [sessionName, pin, p.name, p.score, ts]);
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: `${RESULTS_SHEET}!A1`,
@@ -104,14 +95,40 @@ async function appendResultsToSheet(gamePin, players) {
   });
 }
 
+async function appendDetailResults(sessionName, pin, answerHistory) {
+  const sheets = await getSheetsClient();
+  const ts = new Date().toISOString();
+  const values = [];
+  answerHistory.forEach((h) => {
+    h.perPlayerAnswers.forEach((pa) => {
+      values.push([
+        sessionName,
+        pin,
+        pa.name,
+        h.index + 1,
+        h.question_en,
+        pa.answerIndex === null || pa.answerIndex === undefined ? '(no answer)' : (h.options_en[pa.answerIndex] || ''),
+        h.correctText_en,
+        pa.correct ? 'Yes' : 'No',
+        pa.timeTaken === null ? '' : pa.timeTaken.toFixed(1),
+        pa.scoreGain,
+        ts,
+      ]);
+    });
+  });
+  if (!values.length) return;
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${RESULTS_DETAIL_SHEET}!A1`,
+    valueInputOption: 'RAW',
+    insertDataOption: 'INSERT_ROWS',
+    requestBody: { values },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // In-memory game state
 // ---------------------------------------------------------------------------
-// NOTE: Render's free tier can spin down an idle instance and restart it on
-// the next request ("cold start"). That's fine for typical use (games are
-// short-lived and someone is actively connected), but if the app sits fully
-// idle for a long time between games, in-memory game state resets. For
-// always-on live events, use a paid Render instance so it doesn't sleep.
 const games = {};
 
 function generatePin() {
@@ -123,11 +140,7 @@ function generatePin() {
 }
 
 function publicPlayerList(game) {
-  return Object.entries(game.players).map(([id, p]) => ({
-    id,
-    name: p.name,
-    score: p.score,
-  }));
+  return Object.entries(game.players).map(([id, p]) => ({ id, name: p.name, score: p.score }));
 }
 
 function leaderboard(game) {
@@ -144,7 +157,7 @@ function clearQuestionTimer(game) {
 function sendQuestion(game) {
   clearQuestionTimer(game);
   const q = game.questions[game.currentIndex];
-  if (!q) return endGame(game);
+  if (!q) return finalizeGame(game);
 
   Object.values(game.players).forEach((p) => {
     p.currentAnswer = null;
@@ -154,43 +167,77 @@ function sendQuestion(game) {
   game.state = 'question';
   game.questionStartedAt = Date.now();
 
-  const payload = {
+  io.to(game.pin).emit('question:show', {
     index: game.currentIndex,
     total: game.questions.length,
-    question: q.question,
-    options: q.options,
+    question_en: q.question_en,
+    question_l2: q.question_l2,
+    options_en: q.options_en,
+    options_l2: q.options_l2,
     timeLimit: q.timeLimit,
-  };
+  });
 
-  io.to(game.pin).emit('question:show', payload);
-
-  game.questionTimer = setTimeout(() => revealAnswer(game), q.timeLimit * 1000);
+  game.questionTimer = setTimeout(() => closeQuestion(game), q.timeLimit * 1000);
 }
 
-function revealAnswer(game) {
+// Closes the current question WITHOUT revealing right/wrong to players.
+// Scores are computed and stored internally; discussion happens later.
+function closeQuestion(game) {
   clearQuestionTimer(game);
-  if (game.state === 'reveal') return;
-  game.state = 'reveal';
+  if (game.state === 'closed') return;
+  game.state = 'closed';
 
   const q = game.questions[game.currentIndex];
-  const board = leaderboard(game);
+  const tally = [0, 0, 0, 0];
+  const perPlayerAnswers = [];
 
-  io.to(game.pin).emit('question:reveal', {
-    correctIndex: q.correctIndex,
-    correctText: q.options[q.correctIndex],
-    leaderboard: board,
-    isLastQuestion: game.currentIndex === game.questions.length - 1,
+  Object.entries(game.players).forEach(([id, p]) => {
+    const answerIndex = p.currentAnswer;
+    const correct = answerIndex !== null && answerIndex === q.correctIndex;
+    let scoreGain = 0;
+    if (correct) {
+      const remaining = Math.max(0, q.timeLimit - (p.answerTime || q.timeLimit));
+      scoreGain = Math.round(q.points * (0.5 + 0.5 * (remaining / q.timeLimit)));
+      p.score += scoreGain;
+    }
+    if (answerIndex !== null && answerIndex !== undefined) tally[answerIndex] += 1;
+    perPlayerAnswers.push({
+      socketId: id,
+      name: p.name,
+      answerIndex: answerIndex,
+      correct,
+      scoreGain,
+      timeTaken: p.answerTime,
+    });
   });
+
+  game.answerHistory.push({
+    index: game.currentIndex,
+    question_en: q.question_en,
+    question_l2: q.question_l2,
+    options_en: q.options_en,
+    options_l2: q.options_l2,
+    correctIndex: q.correctIndex,
+    correctText_en: q.options_en[q.correctIndex],
+    correctText_l2: q.options_l2[q.correctIndex],
+    tally,
+    perPlayerAnswers,
+  });
+
+  const isLastQuestion = game.currentIndex === game.questions.length - 1;
+  io.to(game.pin).emit('question:closed', { isLastQuestion });
 }
 
-async function endGame(game) {
+async function finalizeGame(game) {
   game.state = 'ended';
   const board = leaderboard(game);
   io.to(game.pin).emit('game:over', { leaderboard: board });
   try {
-    await appendResultsToSheet(game.pin, board);
+    await appendSummaryResults(game.sessionName, game.pin, board);
+    await appendDetailResults(game.sessionName, game.pin, game.answerHistory);
   } catch (err) {
     console.error('Failed to save results to sheet:', err.message);
+    io.to(game.hostSocketId).emit('error:message', `Saved game but failed to write results to Sheet: ${err.message}`);
   }
 }
 
@@ -198,28 +245,48 @@ async function endGame(game) {
 // Socket.io game logic
 // ---------------------------------------------------------------------------
 io.on('connection', (socket) => {
-  socket.on('host:create', async () => {
+  socket.on('host:create', async ({ sheetTab, sessionName, origin } = {}) => {
     try {
-      const questions = await loadQuestionsFromSheet();
+      const questions = await loadQuestionsFromSheet(sheetTab);
       if (!questions.length) {
-        socket.emit('error:message', 'No questions found in the Google Sheet.');
+        socket.emit('error:message', `No questions found in the "${sheetTab || DEFAULT_QUESTIONS_TAB}" tab.`);
         return;
       }
       const pin = generatePin();
       const game = {
         pin,
         hostSocketId: socket.id,
+        sessionName: (sessionName || 'Untitled Session').toString().slice(0, 60),
+        sheetTab: sheetTab || DEFAULT_QUESTIONS_TAB,
         questions,
         currentIndex: -1,
         state: 'lobby',
         players: {},
         questionTimer: null,
+        answerHistory: [],
+        reviewIndex: -1,
       };
       games[pin] = game;
       socket.join(pin);
       socket.data.pin = pin;
       socket.data.isHost = true;
-      socket.emit('host:created', { pin, questionCount: questions.length });
+
+      const joinUrl = `${origin || ''}/player.html?pin=${pin}`;
+      let qrDataUrl = null;
+      try {
+        qrDataUrl = await QRCode.toDataURL(joinUrl, { width: 400, margin: 1 });
+      } catch (qrErr) {
+        console.error('QR generation failed:', qrErr.message);
+      }
+
+      socket.emit('host:created', {
+        pin,
+        questionCount: questions.length,
+        sessionName: game.sessionName,
+        sheetTab: game.sheetTab,
+        joinUrl,
+        qrDataUrl,
+      });
     } catch (err) {
       console.error(err);
       socket.emit('error:message', `Could not load questions from Google Sheets: ${err.message}`);
@@ -227,31 +294,65 @@ io.on('connection', (socket) => {
   });
 
   socket.on('host:start', () => {
-    const pin = socket.data.pin;
-    const game = games[pin];
+    const game = games[socket.data.pin];
     if (!game || game.hostSocketId !== socket.id) return;
     game.currentIndex = 0;
     sendQuestion(game);
   });
 
+  socket.on('host:closeQuestion', () => {
+    const game = games[socket.data.pin];
+    if (!game || game.hostSocketId !== socket.id) return;
+    closeQuestion(game);
+  });
+
   socket.on('host:next', () => {
-    const pin = socket.data.pin;
-    const game = games[pin];
+    const game = games[socket.data.pin];
     if (!game || game.hostSocketId !== socket.id) return;
     game.currentIndex += 1;
     if (game.currentIndex >= game.questions.length) {
-      endGame(game);
+      finalizeGame(game);
     } else {
       sendQuestion(game);
     }
   });
 
-  socket.on('host:skipToReveal', () => {
-    const pin = socket.data.pin;
-    const game = games[pin];
+  // ---- Post-quiz discussion / review mode ----
+  socket.on('host:reviewStart', () => {
+    const game = games[socket.data.pin];
     if (!game || game.hostSocketId !== socket.id) return;
-    revealAnswer(game);
+    game.reviewIndex = 0;
+    emitReviewSlide(game);
   });
+
+  socket.on('host:reviewNext', () => {
+    const game = games[socket.data.pin];
+    if (!game || game.hostSocketId !== socket.id) return;
+    if (game.reviewIndex < game.answerHistory.length - 1) game.reviewIndex += 1;
+    emitReviewSlide(game);
+  });
+
+  socket.on('host:reviewPrev', () => {
+    const game = games[socket.data.pin];
+    if (!game || game.hostSocketId !== socket.id) return;
+    if (game.reviewIndex > 0) game.reviewIndex -= 1;
+    emitReviewSlide(game);
+  });
+
+  function emitReviewSlide(game) {
+    const h = game.answerHistory[game.reviewIndex];
+    if (!h) return;
+    io.to(game.pin).emit('review:show', {
+      index: game.reviewIndex,
+      total: game.answerHistory.length,
+      question_en: h.question_en,
+      question_l2: h.question_l2,
+      options_en: h.options_en,
+      options_l2: h.options_l2,
+      correctIndex: h.correctIndex,
+      tally: h.tally,
+    });
+  }
 
   socket.on('player:join', ({ pin, name }) => {
     const game = games[pin];
@@ -274,26 +375,17 @@ io.on('connection', (socket) => {
   });
 
   socket.on('player:answer', ({ answerIndex }) => {
-    const pin = socket.data.pin;
-    const game = games[pin];
+    const game = games[socket.data.pin];
     if (!game || game.state !== 'question') return;
     const player = game.players[socket.id];
     if (!player || player.currentAnswer !== null) return;
 
-    const q = game.questions[game.currentIndex];
     const elapsed = (Date.now() - game.questionStartedAt) / 1000;
     player.currentAnswer = answerIndex;
     player.answerTime = elapsed;
 
-    const correct = answerIndex === q.correctIndex;
-    if (correct) {
-      const remaining = Math.max(0, q.timeLimit - elapsed);
-      const scoreGain = Math.round(q.points * (0.5 + 0.5 * (remaining / q.timeLimit)));
-      player.score += scoreGain;
-      socket.emit('player:answerResult', { correct: true, scoreGain, totalScore: player.score });
-    } else {
-      socket.emit('player:answerResult', { correct: false, scoreGain: 0, totalScore: player.score });
-    }
+    // No correct/wrong feedback here on purpose -- discussion happens after the quiz.
+    socket.emit('player:answerLocked', { answerIndex });
 
     io.to(game.hostSocketId).emit('host:answerCount', {
       answered: Object.values(game.players).filter((p) => p.currentAnswer !== null).length,
@@ -301,7 +393,7 @@ io.on('connection', (socket) => {
     });
 
     const allAnswered = Object.values(game.players).every((p) => p.currentAnswer !== null);
-    if (allAnswered) revealAnswer(game);
+    if (allAnswered) closeQuestion(game);
   });
 
   socket.on('disconnect', () => {

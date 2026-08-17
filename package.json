@@ -1,7 +1,7 @@
 {
   "name": "kahoot-clone",
-  "version": "1.0.0",
-  "description": "Kahoot-style real-time quiz app using Google Sheets as the data store",
+  "version": "1.1.0",
+  "description": "Kahoot-style real-time bilingual quiz app using Google Sheets as the data store",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,6 +10,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "googleapis": "^140.0.1",
+    "qrcode": "^1.5.3",
     "socket.io": "^4.7.5"
   }
 }

@@ -15,34 +15,50 @@
       <input type="text" id="pinInput" placeholder="Game PIN" inputmode="numeric" maxlength="6" />
       <input type="text" id="nameInput" placeholder="Your nickname" maxlength="20" />
       <button id="joinBtn">Join Game</button>
-      <p id="joinError" style="color:#ffd6d6;"></p>
+      <p id="joinError" class="error-text"></p>
     </div>
 
     <!-- WAITING -->
     <div id="waitingView" class="card" style="display:none;">
       <h2>You're in! 🎉</h2>
       <p>Waiting for the host to start the game...</p>
+      <p class="assist-note">📽️ Can't see the projector well? Questions and answers will also show right here on your phone.</p>
     </div>
 
     <!-- QUESTION -->
     <div id="questionView" style="display:none;">
-      <div class="card">
+      <div class="card player-question-card">
         <div class="timer" id="timerDisplay"></div>
+        <div class="bilingual-question player-bilingual">
+          <div class="q-en" id="pQuestionEn"></div>
+          <div class="q-l2" id="pQuestionL2"></div>
+        </div>
         <div class="answers-grid" id="answersGrid"></div>
       </div>
     </div>
 
-    <!-- RESULT AFTER ANSWER -->
-    <div id="resultView" class="card" style="display:none;">
-      <div class="banner" id="resultBanner"></div>
-      <p id="resultScore"></p>
+    <!-- LOCKED IN (no right/wrong shown) -->
+    <div id="lockedView" class="card" style="display:none;">
+      <div class="banner locked-banner" id="lockedBanner"></div>
+      <p class="assist-note">Correct answers will be discussed together after the quiz.</p>
     </div>
 
     <!-- GAME OVER -->
     <div id="overView" class="card" style="display:none;">
       <h2>🏁 Game Over</h2>
       <div id="finalLeaderboard"></div>
+      <p class="assist-note">Stick around — your host will now go through each question for group discussion.</p>
       <a class="link-btn" href="index.html">Back to home</a>
+    </div>
+
+    <!-- LIVE REVIEW MIRROR (during host discussion) -->
+    <div id="reviewView" class="card" style="display:none;">
+      <p id="reviewMeta" class="q-meta"></p>
+      <div class="bilingual-question player-bilingual">
+        <div class="q-en" id="rQuestionEn"></div>
+        <div class="q-l2" id="rQuestionL2"></div>
+      </div>
+      <div class="answers-grid" id="reviewAnswersGrid"></div>
     </div>
   </div>
 
@@ -53,8 +69,14 @@
     const joinView = document.getElementById('joinView');
     const waitingView = document.getElementById('waitingView');
     const questionView = document.getElementById('questionView');
-    const resultView = document.getElementById('resultView');
+    const lockedView = document.getElementById('lockedView');
     const overView = document.getElementById('overView');
+    const reviewView = document.getElementById('reviewView');
+
+    // Pre-fill PIN from QR code link: player.html?pin=123456
+    const urlParams = new URLSearchParams(window.location.search);
+    const pinFromUrl = urlParams.get('pin');
+    if (pinFromUrl) document.getElementById('pinInput').value = pinFromUrl;
 
     document.getElementById('joinBtn').onclick = () => {
       const pin = document.getElementById('pinInput').value.trim();
@@ -77,26 +99,28 @@
 
     let timerInterval = null;
     let answered = false;
+    const shapeLabels = ['▲', '◆', '●', '■'];
 
-    const colors = ['answer-btn']; // classes already colored by nth-child in CSS
-
-    socket.on('question:show', ({ timeLimit, options }) => {
+    socket.on('question:show', ({ timeLimit, options_en, options_l2, question_en, question_l2 }) => {
       waitingView.style.display = 'none';
-      resultView.style.display = 'none';
+      lockedView.style.display = 'none';
       questionView.style.display = 'block';
       answered = false;
 
+      document.getElementById('pQuestionEn').textContent = question_en;
+      document.getElementById('pQuestionL2').textContent = question_l2 || '';
+
       const grid = document.getElementById('answersGrid');
       grid.innerHTML = '';
-      options.forEach((opt, i) => {
+      options_en.forEach((opt, i) => {
         if (!opt) return;
         const btn = document.createElement('button');
-        btn.className = 'answer-btn';
-        btn.textContent = ['▲', '◆', '●', '■'][i] || '';
+        btn.className = 'answer-btn player-answer-btn';
+        btn.innerHTML = `<span class="opt-shape">${shapeLabels[i] || ''}</span><span class="opt-en">${opt}</span><span class="opt-l2">${options_l2[i] || ''}</span>`;
         btn.onclick = () => {
           if (answered) return;
           answered = true;
-          document.querySelectorAll('.answer-btn').forEach((b) => (b.disabled = true));
+          document.querySelectorAll('.player-answer-btn').forEach((b) => (b.disabled = true));
           btn.classList.add('selected');
           socket.emit('player:answer', { answerIndex: i });
         };
@@ -114,29 +138,24 @@
       }, 1000);
     });
 
-    socket.on('player:answerResult', ({ correct, scoreGain, totalScore }) => {
+    socket.on('player:answerLocked', ({ answerIndex }) => {
       questionView.style.display = 'none';
-      resultView.style.display = 'block';
-      const banner = document.getElementById('resultBanner');
-      banner.className = 'banner ' + (correct ? 'correct-banner' : 'wrong-banner');
-      banner.textContent = correct ? `✅ Correct! +${scoreGain}` : '❌ Wrong answer';
-      document.getElementById('resultScore').textContent = `Total score: ${totalScore}`;
+      lockedView.style.display = 'block';
+      const label = shapeLabels[answerIndex] || '';
+      document.getElementById('lockedBanner').textContent = `🔒 Answer locked in (${label})`;
     });
 
-    socket.on('question:reveal', () => {
-      // if player didn't answer in time
+    socket.on('question:closed', () => {
+      if (timerInterval) clearInterval(timerInterval);
       if (!answered) {
         questionView.style.display = 'none';
-        resultView.style.display = 'block';
-        const banner = document.getElementById('resultBanner');
-        banner.className = 'banner wrong-banner';
-        banner.textContent = "⏰ Time's up!";
-        document.getElementById('resultScore').textContent = '';
+        lockedView.style.display = 'block';
+        document.getElementById('lockedBanner').textContent = "⏰ Time's up — no answer recorded";
       }
     });
 
     socket.on('game:over', ({ leaderboard }) => {
-      resultView.style.display = 'none';
+      lockedView.style.display = 'none';
       overView.style.display = 'block';
       const lb = document.getElementById('finalLeaderboard');
       lb.innerHTML = '';
@@ -145,6 +164,24 @@
         row.className = `leaderboard-item rank-${i}`;
         row.innerHTML = `<span>#${i + 1} ${p.name}</span><span>${p.score}</span>`;
         lb.appendChild(row);
+      });
+    });
+
+    socket.on('review:show', ({ index, total, question_en, question_l2, options_en, options_l2, correctIndex, tally }) => {
+      overView.style.display = 'none';
+      reviewView.style.display = 'block';
+      document.getElementById('reviewMeta').textContent = `Discussion — Question ${index + 1} / ${total}`;
+      document.getElementById('rQuestionEn').textContent = question_en;
+      document.getElementById('rQuestionL2').textContent = question_l2 || '';
+
+      const grid = document.getElementById('reviewAnswersGrid');
+      grid.innerHTML = '';
+      options_en.forEach((opt, i) => {
+        if (!opt) return;
+        const div = document.createElement('div');
+        div.className = 'answer-btn static-answer' + (i === correctIndex ? ' correct-option' : '');
+        div.innerHTML = `<span class="opt-shape">${shapeLabels[i] || ''}</span><span class="opt-en">${opt}${i === correctIndex ? ' ✅' : ''}</span><span class="opt-l2">${options_l2[i] || ''}</span>`;
+        grid.appendChild(div);
       });
     });
   </script>
