@@ -117,12 +117,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 .lobby-url { margin-top: 6px; font-size: 0.9rem; opacity: 0.9; word-break: break-all; }
 
-/* IMPORTANT: uses FLEXBOX (column direction), not CSS grid-template-rows.
-   Flexbox reliably stacks children top-to-bottom in source order. (A prior
-   version used display:grid with only grid-template-rows and no
-   grid-template-columns defined -- without explicit columns, grid's
-   auto-placement lays items out side-by-side in implicit columns instead of
-   stacking them, which is why things previously bunched up horizontally.) */
+/* FLEXBOX (column direction) reliably stacks children top-to-bottom. */
 .fullscreen-view {
   height: 100dvh;
   width: 100%;
@@ -162,24 +157,24 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .answers-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-auto-rows: minmax(min-content, 1fr);
   gap: clamp(10px, 1.6vh, 20px);
   width: 96vw;
   max-width: 1500px;
   flex: 1 1 auto;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .answer-btn {
   padding: clamp(10px, 1.8vh, 24px) clamp(14px, 1.6vw, 26px);
-  font-size: clamp(1rem, 2.6vh, 1.7rem);
+  font-size: clamp(1.05rem, 2.9vh, 1.9rem);
   font-weight: 700;
   border-radius: 16px;
   color: #fff;
   border: none;
   cursor: pointer;
   text-align: left;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -193,7 +188,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .answer-btn.selected { outline: 4px solid #fff; }
 .answer-btn:disabled { opacity: 0.6; }
 .answer-btn .opt-en { overflow-wrap: break-word; }
-.answer-btn .opt-l2 { display:block; font-size: 0.75em; font-weight: 500; opacity: 0.9; margin-top: 4px; overflow-wrap: break-word; }
+.answer-btn .opt-l2 { display:block; font-size: 0.78em; font-weight: 500; opacity: 0.9; margin-top: 4px; overflow-wrap: break-word; }
 .static-answer { cursor: default; }
 
 .review-answer { position: relative; padding-bottom: clamp(34px, 5.5vh, 50px); }
@@ -217,19 +212,20 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   z-index: 50;
 }
 
-/* ---------- PLAYER: fits phone screen without scrolling / edge-bleed ---------- */
+/* ---------- PLAYER: fits phone screen; scroll only kicks in if content
+   genuinely can't fit after shrinking (e.g. very long bilingual text) ---------- */
 body.in-game .card {
   width: 100%;
   height: 100dvh;
   max-width: 100%;
   margin: 0;
   border-radius: 0;
-  padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
+  padding: 10px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: clamp(6px, 1.5vh, 14px);
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .player-question-card {
@@ -240,7 +236,7 @@ body.in-game .card {
   color: #222;
   border-radius: 14px;
   padding: clamp(10px, 2vh, 18px);
-  max-height: 32dvh;
+  max-height: 30dvh;
   overflow-y: auto;
   flex-shrink: 0;
   overflow-wrap: break-word;
@@ -249,16 +245,17 @@ body.in-game .card {
 .player-bilingual .q-l2 { font-size: clamp(0.85rem, 2.2vh, 1.05rem); overflow-wrap: break-word; }
 
 #questionView, #lockedView, #reviewView { height: 100dvh; }
-#questionView .card { justify-content: space-between; }
+#questionView .card { justify-content: flex-start; }
 
 #answersGrid, #reviewAnswersGrid {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  grid-auto-rows: minmax(min-content, 1fr);
   gap: clamp(6px, 1.4vh, 12px);
+  overflow-y: auto;
 }
 
 .player-answer-btn {
@@ -269,7 +266,6 @@ body.in-game .card {
   gap: 1px;
   min-height: 0;
   min-width: 0;
-  overflow: hidden;
 }
 .opt-shape { font-size: clamp(1rem, 2.6vh, 1.3rem); }
 .opt-en { font-weight: 700; font-size: clamp(0.85rem, 2.1vh, 1.05rem); overflow-wrap: break-word; }
