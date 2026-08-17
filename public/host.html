@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Host - QuizClash</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>🧠 QuizClash — Host</h1>
+
+    <!-- LOBBY / CREATE -->
+    <div id="createView" class="card">
+      <button id="createBtn">Create Game</button>
+      <p id="createError" style="color:#ffd6d6;"></p>
+    </div>
+
+    <!-- LOBBY / WAITING FOR PLAYERS -->
+    <div id="lobbyView" class="card" style="display:none;">
+      <p>Players join at <strong id="joinUrl"></strong> using PIN:</p>
+      <div class="pin-display" id="pinDisplay">------</div>
+      <div class="player-list" id="playerList"></div>
+      <button id="startBtn" style="margin-top:20px;">Start Game</button>
+    </div>
+
+    <!-- QUESTION VIEW -->
+    <div id="questionView" style="display:none;">
+      <div class="card">
+        <p id="questionMeta"></p>
+        <div class="question-box" id="questionText"></div>
+        <div class="timer" id="timerDisplay"></div>
+        <p id="answerCount"></p>
+        <div class="answers-grid" id="hostAnswersGrid"></div>
+      </div>
+    </div>
+
+    <!-- REVEAL VIEW -->
+    <div id="revealView" class="card" style="display:none;">
+      <div class="banner correct-banner" id="correctAnswerBanner"></div>
+      <h3>Leaderboard</h3>
+      <div id="leaderboardList"></div>
+      <button id="nextBtn" style="margin-top:16px;">Next Question</button>
+    </div>
+
+    <!-- GAME OVER -->
+    <div id="overView" class="card" style="display:none;">
+      <h2>🏆 Final Results</h2>
+      <div id="finalLeaderboard"></div>
+      <p style="margin-top:12px;">Results have been saved to the Google Sheet.</p>
+      <a class="link-btn" href="index.html">Back to home</a>
+    </div>
+
+    <p id="hostErrorMsg" style="color:#ffd6d6;"></p>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let currentPin = null;
+
+    const createView = document.getElementById('createView');
+    const lobbyView = document.getElementById('lobbyView');
+    const questionView = document.getElementById('questionView');
+    const revealView = document.getElementById('revealView');
+    const overView = document.getElementById('overView');
+
+    document.getElementById('joinUrl').textContent = window.location.origin + '/player.html';
+
+    document.getElementById('createBtn').onclick = () => {
+      socket.emit('host:create');
+    };
+
+    socket.on('host:created', ({ pin, questionCount }) => {
+      currentPin = pin;
+      document.getElementById('pinDisplay').textContent = pin;
+      createView.style.display = 'none';
+      lobbyView.style.display = 'block';
+    });
+
+    socket.on('host:playerJoined', ({ players }) => {
+      const list = document.getElementById('playerList');
+      list.innerHTML = '';
+      players.forEach((p) => {
+        const chip = document.createElement('div');
+        chip.className = 'player-chip';
+        chip.textContent = p.name;
+        list.appendChild(chip);
+      });
+    });
+
+    document.getElementById('startBtn').onclick = () => {
+      socket.emit('host:start');
+    };
+
+    let timerInterval = null;
+
+    socket.on('question:show', ({ index, total, question, options, timeLimit }) => {
+      lobbyView.style.display = 'none';
+      revealView.style.display = 'none';
+      questionView.style.display = 'block';
+
+      document.getElementById('questionMeta').textContent = `Question ${index + 1} / ${total}`;
+      document.getElementById('questionText').textContent = question;
+      document.getElementById('answerCount').textContent = '';
+
+      const grid = document.getElementById('hostAnswersGrid');
+      grid.innerHTML = '';
+      options.forEach((opt) => {
+        if (!opt) return;
+        const btn = document.createElement('div');
+        btn.className = 'answer-btn';
+        btn.style.cursor = 'default';
+        btn.textContent = opt;
+        grid.appendChild(btn);
+      });
+
+      let remaining = timeLimit;
+      const timerEl = document.getElementById('timerDisplay');
+      timerEl.textContent = `⏱ ${remaining}s`;
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        remaining -= 1;
+        timerEl.textContent = `⏱ ${Math.max(remaining, 0)}s`;
+        if (remaining <= 0) clearInterval(timerInterval);
+      }, 1000);
+    });
+
+    socket.on('host:answerCount', ({ answered, total }) => {
+      document.getElementById('answerCount').textContent = `${answered}/${total} answered`;
+    });
+
+    socket.on('question:reveal', ({ correctText, leaderboard, isLastQuestion }) => {
+      if (timerInterval) clearInterval(timerInterval);
+      questionView.style.display = 'none';
+      revealView.style.display = 'block';
+
+      document.getElementById('correctAnswerBanner').textContent = `✅ Correct answer: ${correctText}`;
+
+      const lb = document.getElementById('leaderboardList');
+      lb.innerHTML = '';
+      leaderboard.forEach((p, i) => {
+        const row = document.createElement('div');
+        row.className = `leaderboard-item rank-${i}`;
+        row.innerHTML = `<span>#${i + 1} ${p.name}</span><span>${p.score}</span>`;
+        lb.appendChild(row);
+      });
+
+      document.getElementById('nextBtn').textContent = isLastQuestion ? 'Show Final Results' : 'Next Question';
+    });
+
+    document.getElementById('nextBtn').onclick = () => {
+      socket.emit('host:next');
+    };
+
+    socket.on('game:over', ({ leaderboard }) => {
+      revealView.style.display = 'none';
+      overView.style.display = 'block';
+      const lb = document.getElementById('finalLeaderboard');
+      lb.innerHTML = '';
+      leaderboard.forEach((p, i) => {
+        const row = document.createElement('div');
+        row.className = `leaderboard-item rank-${i}`;
+        row.innerHTML = `<span>#${i + 1} ${p.name}</span><span>${p.score}</span>`;
+        lb.appendChild(row);
+      });
+    });
+
+    socket.on('error:message', (msg) => {
+      document.getElementById('hostErrorMsg').textContent = msg;
+    });
+  </script>
+</body>
+</html>

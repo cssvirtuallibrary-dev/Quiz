@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Join - QuizClash</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>🧠 QuizClash</h1>
+
+    <!-- JOIN FORM -->
+    <div id="joinView" class="card">
+      <input type="text" id="pinInput" placeholder="Game PIN" inputmode="numeric" maxlength="6" />
+      <input type="text" id="nameInput" placeholder="Your nickname" maxlength="20" />
+      <button id="joinBtn">Join Game</button>
+      <p id="joinError" style="color:#ffd6d6;"></p>
+    </div>
+
+    <!-- WAITING -->
+    <div id="waitingView" class="card" style="display:none;">
+      <h2>You're in! 🎉</h2>
+      <p>Waiting for the host to start the game...</p>
+    </div>
+
+    <!-- QUESTION -->
+    <div id="questionView" style="display:none;">
+      <div class="card">
+        <div class="timer" id="timerDisplay"></div>
+        <div class="answers-grid" id="answersGrid"></div>
+      </div>
+    </div>
+
+    <!-- RESULT AFTER ANSWER -->
+    <div id="resultView" class="card" style="display:none;">
+      <div class="banner" id="resultBanner"></div>
+      <p id="resultScore"></p>
+    </div>
+
+    <!-- GAME OVER -->
+    <div id="overView" class="card" style="display:none;">
+      <h2>🏁 Game Over</h2>
+      <div id="finalLeaderboard"></div>
+      <a class="link-btn" href="index.html">Back to home</a>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    const joinView = document.getElementById('joinView');
+    const waitingView = document.getElementById('waitingView');
+    const questionView = document.getElementById('questionView');
+    const resultView = document.getElementById('resultView');
+    const overView = document.getElementById('overView');
+
+    document.getElementById('joinBtn').onclick = () => {
+      const pin = document.getElementById('pinInput').value.trim();
+      const name = document.getElementById('nameInput').value.trim();
+      if (!pin || !name) {
+        document.getElementById('joinError').textContent = 'Please enter both PIN and nickname.';
+        return;
+      }
+      socket.emit('player:join', { pin, name });
+    };
+
+    socket.on('player:joined', () => {
+      joinView.style.display = 'none';
+      waitingView.style.display = 'block';
+    });
+
+    socket.on('error:message', (msg) => {
+      document.getElementById('joinError').textContent = msg;
+    });
+
+    let timerInterval = null;
+    let answered = false;
+
+    const colors = ['answer-btn']; // classes already colored by nth-child in CSS
+
+    socket.on('question:show', ({ timeLimit, options }) => {
+      waitingView.style.display = 'none';
+      resultView.style.display = 'none';
+      questionView.style.display = 'block';
+      answered = false;
+
+      const grid = document.getElementById('answersGrid');
+      grid.innerHTML = '';
+      options.forEach((opt, i) => {
+        if (!opt) return;
+        const btn = document.createElement('button');
+        btn.className = 'answer-btn';
+        btn.textContent = ['▲', '◆', '●', '■'][i] || '';
+        btn.onclick = () => {
+          if (answered) return;
+          answered = true;
+          document.querySelectorAll('.answer-btn').forEach((b) => (b.disabled = true));
+          btn.classList.add('selected');
+          socket.emit('player:answer', { answerIndex: i });
+        };
+        grid.appendChild(btn);
+      });
+
+      let remaining = timeLimit;
+      const timerEl = document.getElementById('timerDisplay');
+      timerEl.textContent = `⏱ ${remaining}s`;
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        remaining -= 1;
+        timerEl.textContent = `⏱ ${Math.max(remaining, 0)}s`;
+        if (remaining <= 0) clearInterval(timerInterval);
+      }, 1000);
+    });
+
+    socket.on('player:answerResult', ({ correct, scoreGain, totalScore }) => {
+      questionView.style.display = 'none';
+      resultView.style.display = 'block';
+      const banner = document.getElementById('resultBanner');
+      banner.className = 'banner ' + (correct ? 'correct-banner' : 'wrong-banner');
+      banner.textContent = correct ? `✅ Correct! +${scoreGain}` : '❌ Wrong answer';
+      document.getElementById('resultScore').textContent = `Total score: ${totalScore}`;
+    });
+
+    socket.on('question:reveal', () => {
+      // if player didn't answer in time
+      if (!answered) {
+        questionView.style.display = 'none';
+        resultView.style.display = 'block';
+        const banner = document.getElementById('resultBanner');
+        banner.className = 'banner wrong-banner';
+        banner.textContent = "⏰ Time's up!";
+        document.getElementById('resultScore').textContent = '';
+      }
+    });
+
+    socket.on('game:over', ({ leaderboard }) => {
+      resultView.style.display = 'none';
+      overView.style.display = 'block';
+      const lb = document.getElementById('finalLeaderboard');
+      lb.innerHTML = '';
+      leaderboard.forEach((p, i) => {
+        const row = document.createElement('div');
+        row.className = `leaderboard-item rank-${i}`;
+        row.innerHTML = `<span>#${i + 1} ${p.name}</span><span>${p.score}</span>`;
+        lb.appendChild(row);
+      });
+    });
+  </script>
+</body>
+</html>
