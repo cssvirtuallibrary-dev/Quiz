@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Join - QuizClash</title>
 <link rel="stylesheet" href="style.css" />
 </head>
@@ -73,6 +73,13 @@
     const overView = document.getElementById('overView');
     const reviewView = document.getElementById('reviewView');
 
+    // Toggle a body class so CSS can hide the header / go edge-to-edge
+    // while an active game screen is showing, so everything fits without
+    // needing to scroll the page.
+    function setInGame(active) {
+      document.body.classList.toggle('in-game', active);
+    }
+
     // Pre-fill PIN from QR code link: player.html?pin=123456
     const urlParams = new URLSearchParams(window.location.search);
     const pinFromUrl = urlParams.get('pin');
@@ -91,6 +98,7 @@
     socket.on('player:joined', () => {
       joinView.style.display = 'none';
       waitingView.style.display = 'block';
+      setInGame(false);
     });
 
     socket.on('error:message', (msg) => {
@@ -105,6 +113,7 @@
       waitingView.style.display = 'none';
       lockedView.style.display = 'none';
       questionView.style.display = 'block';
+      setInGame(true);
       answered = false;
 
       document.getElementById('pQuestionEn').textContent = question_en;
@@ -141,6 +150,7 @@
     socket.on('player:answerLocked', ({ answerIndex }) => {
       questionView.style.display = 'none';
       lockedView.style.display = 'block';
+      setInGame(true);
       const label = shapeLabels[answerIndex] || '';
       document.getElementById('lockedBanner').textContent = `🔒 Answer locked in (${label})`;
     });
@@ -150,6 +160,7 @@
       if (!answered) {
         questionView.style.display = 'none';
         lockedView.style.display = 'block';
+        setInGame(true);
         document.getElementById('lockedBanner').textContent = "⏰ Time's up — no answer recorded";
       }
     });
@@ -157,6 +168,7 @@
     socket.on('game:over', ({ leaderboard }) => {
       lockedView.style.display = 'none';
       overView.style.display = 'block';
+      setInGame(false);
       const lb = document.getElementById('finalLeaderboard');
       lb.innerHTML = '';
       leaderboard.forEach((p, i) => {
@@ -170,6 +182,7 @@
     socket.on('review:show', ({ index, total, question_en, question_l2, options_en, options_l2, correctIndex, tally }) => {
       overView.style.display = 'none';
       reviewView.style.display = 'block';
+      setInGame(true);
       document.getElementById('reviewMeta').textContent = `Discussion — Question ${index + 1} / ${total}`;
       document.getElementById('rQuestionEn').textContent = question_en;
       document.getElementById('rQuestionL2').textContent = question_l2 || '';
@@ -179,7 +192,7 @@
       options_en.forEach((opt, i) => {
         if (!opt) return;
         const div = document.createElement('div');
-        div.className = 'answer-btn static-answer' + (i === correctIndex ? ' correct-option' : '');
+        div.className = 'answer-btn static-answer player-answer-btn' + (i === correctIndex ? ' correct-option' : '');
         div.innerHTML = `<span class="opt-shape">${shapeLabels[i] || ''}</span><span class="opt-en">${opt}${i === correctIndex ? ' ✅' : ''}</span><span class="opt-l2">${options_l2[i] || ''}</span>`;
         grid.appendChild(div);
       });
