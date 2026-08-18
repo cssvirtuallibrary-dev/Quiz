@@ -7,14 +7,6 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- Floating language toggle, visible during the live game so players can
-       switch anytime. VN = Vietnamese (Question_VN / OptionX_VN columns).
-       EN = English (Question_EN / OptionX_EN columns). -->
-  <div class="lang-toggle-floating" id="floatingLangToggle" style="display:none;">
-    <button id="floatLangVnBtn">VN</button>
-    <button id="floatLangEnBtn">EN</button>
-  </div>
-
   <div class="container">
     <h1>🧠 QuizClash</h1>
 
@@ -41,7 +33,15 @@
     <!-- QUESTION -->
     <div id="questionView" style="display:none;">
       <div class="card player-question-card">
-        <div class="timer" id="timerDisplay"></div>
+        <!-- In-flow language bar: sits above content, never overlaps text
+             (a previous fixed/floating version sat on top of headings). -->
+        <div class="lang-bar" id="langBarQuestion">
+          <span class="lang-bar-timer" id="timerDisplay"></span>
+          <span class="lang-bar-buttons">
+            <button id="qLangVnBtn">VN</button>
+            <button id="qLangEnBtn">EN</button>
+          </span>
+        </div>
         <div class="bilingual-question player-bilingual">
           <div class="q-en" id="pQuestionText"></div>
         </div>
@@ -65,7 +65,13 @@
 
     <!-- LIVE REVIEW MIRROR (during host discussion) -->
     <div id="reviewView" class="card" style="display:none;">
-      <p id="reviewMeta" class="q-meta"></p>
+      <div class="lang-bar" id="langBarReview">
+        <span class="lang-bar-meta" id="reviewMeta"></span>
+        <span class="lang-bar-buttons">
+          <button id="rLangVnBtn">VN</button>
+          <button id="rLangEnBtn">EN</button>
+        </span>
+      </div>
       <div class="bilingual-question player-bilingual">
         <div class="q-en" id="rQuestionText"></div>
       </div>
@@ -83,14 +89,8 @@
     const lockedView = document.getElementById('lockedView');
     const overView = document.getElementById('overView');
     const reviewView = document.getElementById('reviewView');
-    const floatingLangToggle = document.getElementById('floatingLangToggle');
 
-    // IMPORTANT: declare state variables BEFORE any function that references
-    // them is defined/called. (A previous version called setLang() at the
-    // top of the script before `let lastQuestionPayload` had run, which
-    // threw a ReferenceError due to the JS "temporal dead zone" and silently
-    // stopped the entire script -- that's why the PIN prefill and Join
-    // button both appeared broken. Fixed by ordering declarations first.)
+    // State declared before any function that references it.
     let timerInterval = null;
     let answered = false;
     let lastQuestionPayload = null;
@@ -100,25 +100,37 @@
     // ---- Language preference: 'vn' = Vietnamese columns, 'en' = English columns ----
     let lang = localStorage.getItem('quizclash_lang') || 'vn';
 
+    const allLangButtons = () => [
+      document.getElementById('langVnBtn'),
+      document.getElementById('langEnBtn'),
+      document.getElementById('qLangVnBtn'),
+      document.getElementById('qLangEnBtn'),
+      document.getElementById('rLangVnBtn'),
+      document.getElementById('rLangEnBtn'),
+    ];
+
     function setLang(newLang) {
       lang = newLang;
       localStorage.setItem('quizclash_lang', lang);
-      document.getElementById('langVnBtn').classList.toggle('active', lang === 'vn');
-      document.getElementById('langEnBtn').classList.toggle('active', lang === 'en');
-      document.getElementById('floatLangVnBtn').classList.toggle('active', lang === 'vn');
-      document.getElementById('floatLangEnBtn').classList.toggle('active', lang === 'en');
+      ['langVnBtn', 'qLangVnBtn', 'rLangVnBtn'].forEach((id) =>
+        document.getElementById(id).classList.toggle('active', lang === 'vn')
+      );
+      ['langEnBtn', 'qLangEnBtn', 'rLangEnBtn'].forEach((id) =>
+        document.getElementById(id).classList.toggle('active', lang === 'en')
+      );
       if (lastQuestionPayload && questionView.style.display !== 'none') renderQuestion(lastQuestionPayload);
       if (lastReviewPayload && reviewView.style.display !== 'none') renderReview(lastReviewPayload);
     }
     document.getElementById('langVnBtn').onclick = () => setLang('vn');
     document.getElementById('langEnBtn').onclick = () => setLang('en');
-    document.getElementById('floatLangVnBtn').onclick = () => setLang('vn');
-    document.getElementById('floatLangEnBtn').onclick = () => setLang('en');
+    document.getElementById('qLangVnBtn').onclick = () => setLang('vn');
+    document.getElementById('qLangEnBtn').onclick = () => setLang('en');
+    document.getElementById('rLangVnBtn').onclick = () => setLang('vn');
+    document.getElementById('rLangEnBtn').onclick = () => setLang('en');
     setLang(lang);
 
     function setInGame(active) {
       document.body.classList.toggle('in-game', active);
-      floatingLangToggle.style.display = active ? 'flex' : 'none';
     }
 
     // Prefill PIN from QR code link: player.html?pin=123456
@@ -225,7 +237,7 @@
 
     function renderReview(data) {
       const { index, total, question_vn, question_en, options_vn, options_en, correctIndex } = data;
-      document.getElementById('reviewMeta').textContent = `Discussion — Question ${index + 1} / ${total}`;
+      document.getElementById('reviewMeta').textContent = `Discussion — Q${index + 1}/${total}`;
       const qText = lang === 'vn' ? question_vn : (question_en || question_vn);
       document.getElementById('rQuestionText').textContent = qText;
 

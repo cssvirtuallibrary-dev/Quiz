@@ -92,7 +92,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   font-size: 0.9rem;
 }
 
-/* ---------- LANGUAGE TOGGLE (player screen) ---------- */
+/* ---------- LANGUAGE TOGGLE: join screen version (stacked, normal flow) ---------- */
 .lang-toggle {
   display: flex;
   gap: 6px;
@@ -112,24 +112,43 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   background: #ffcc00;
   color: #222;
 }
-.lang-toggle-floating {
-  position: fixed;
-  top: 8px;
-  right: max(8px, env(safe-area-inset-right));
-  z-index: 60;
+
+/* ---------- LANGUAGE BAR: in-game version. Lives INSIDE the normal page
+   flow at the top of each screen (question / locked / review), instead of
+   being position:fixed. A fixed/floating toggle previously sat on top of
+   heading text like "Discussion — Question 4 / 4" and visually overlapped
+   it -- an in-flow bar can never overlap other content, it just takes up
+   its own row of space. ---------- */
+.lang-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-bottom: 6px;
+}
+.lang-bar-timer, .lang-bar-meta {
+  font-weight: 800;
+  font-size: clamp(0.9rem, 2.6vh, 1.15rem);
+  text-align: left;
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+.lang-bar-buttons {
   display: flex;
   gap: 6px;
+  flex-shrink: 0;
 }
-.lang-toggle-floating button {
+.lang-bar-buttons button {
   width: auto;
   padding: 6px 12px;
   font-size: 0.78rem;
-  background: rgba(0,0,0,0.35);
+  background: rgba(255,255,255,0.2);
   color: #fff;
   border-radius: 20px;
   box-shadow: none;
 }
-.lang-toggle-floating button.active {
+.lang-bar-buttons button.active {
   background: #ffcc00;
   color: #222;
 }
@@ -236,12 +255,8 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .answer-btn .opt-l2 { display:block; font-size: 0.6em; font-weight: 600; opacity: 0.9; margin-top: 8px; overflow-wrap: break-word; }
 .static-answer { cursor: default; }
 
-/* Correct-answer highlight uses an INSET shadow + border instead of an
-   outer glow. Outer box-shadows can get silently clipped by ancestor
-   overflow settings (see note below on #answersGrid), which was cutting
-   off the right-hand column's highlight and making those boxes look
-   "cut off". Inset shadows are always contained within the element and
-   can never be clipped this way. */
+/* Correct-answer highlight uses an INSET shadow so it can never be
+   clipped by any ancestor's overflow setting. */
 .review-answer { position: relative; padding-bottom: clamp(34px, 5.5vh, 50px); justify-content: center; }
 .correct-option { box-shadow: inset 0 0 0 4px #fff, inset 0 0 0 8px #26890c; }
 .tally-bar { position:absolute; bottom:26px; left:16px; right:16px; height:10px; background:rgba(0,0,0,0.25); border-radius:6px; overflow:hidden; }
@@ -273,12 +288,8 @@ body.in-game .card {
   padding: 10px max(16px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  /* Fixed minimum gap (not just a vh-based one) so the question box never
-     visually touches the answer grid on short phone screens. */
+  justify-content: flex-start;
   gap: 14px;
-  /* Scrolling, if ever needed, happens ONLY here at the outer card level --
-     never on the inner answer grid (see note below). */
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -295,20 +306,18 @@ body.in-game .card {
   overflow-y: auto;
   flex-shrink: 0;
   overflow-wrap: break-word;
-  margin-bottom: 4px;
+  margin: 0;
 }
 .player-bilingual .q-en { font-size: clamp(1.1rem, 3.4vh, 1.5rem); overflow-wrap: break-word; }
 .player-bilingual .q-l2 { font-size: clamp(0.85rem, 2.2vh, 1.05rem); overflow-wrap: break-word; opacity: 0.75; margin-top: 6px; }
 
 #questionView, #lockedView, #reviewView { height: 100dvh; }
-#questionView .card { justify-content: flex-start; }
 
-/* IMPORTANT: no overflow-y (or overflow-x) is set directly on the answer
-   grid itself. Per the CSS overflow spec, explicitly setting one axis to
-   "auto" while leaving the other "visible" forces browsers to also treat
-   the visible axis as "auto" -- which was silently clipping the right-hand
-   answer boxes (and their highlight borders) on the player's phone screen.
-   Scrolling is instead handled once, safely, by the outer .card above. */
+/* No overflow-y (or overflow-x) is set directly on the answer grid itself --
+   scrolling, if ever needed, happens once at the outer .card level. Setting
+   overflow on only one axis of the grid was previously forcing the browser
+   to clip the other axis too (per the CSS overflow spec), which is what cut
+   off the right-hand answer boxes. */
 #answersGrid, #reviewAnswersGrid {
   flex: 1 1 auto;
   min-height: 0;
