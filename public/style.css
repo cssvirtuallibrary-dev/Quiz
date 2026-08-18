@@ -305,6 +305,16 @@ body.in-game .card {
   justify-content: flex-start !important;
 }
 .player-bilingual {
+  /* Override the host's vw-based width entirely: use 100% of the parent
+     .card's content box instead, so it always respects the card's padding
+     and never extends past the true visible screen edge on mobile. The
+     shared .bilingual-question class (used by the host projector too) sets
+     width:96vw, which ignores this card's padding and can push past the
+     true visible viewport on some mobile browsers -- this override fixes
+     that specifically for the player screen. */
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   background: #fff;
   color: #222;
   border-radius: 14px;
@@ -312,11 +322,14 @@ body.in-game .card {
   max-height: 30dvh;
   overflow-y: auto;
   flex-shrink: 0;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   margin: 0;
 }
-.player-bilingual .q-en { font-size: clamp(1.1rem, 3.4vh, 1.5rem); overflow-wrap: break-word; }
-.player-bilingual .q-l2 { font-size: clamp(0.85rem, 2.2vh, 1.05rem); overflow-wrap: break-word; opacity: 0.75; margin-top: 6px; }
+/* Slightly smaller text so more of the sentence fits per line, with fewer
+   awkward mid-word breaks (e.g. "Concentratin / g"). */
+.player-bilingual .q-en { font-size: clamp(1rem, 3vh, 1.3rem); line-height: 1.3; overflow-wrap: anywhere; word-break: break-word; }
+.player-bilingual .q-l2 { font-size: clamp(0.78rem, 2vh, 0.95rem); line-height: 1.3; overflow-wrap: anywhere; word-break: break-word; opacity: 0.75; margin-top: 6px; }
 
 #questionView, #lockedView, #reviewView { height: 100dvh; }
 
@@ -356,9 +369,9 @@ body.in-game .card {
   min-height: 0;
   min-width: 0;
 }
-.opt-shape { font-size: clamp(1.1rem, 2.8vh, 1.4rem); }
-.opt-en { font-weight: 700; font-size: clamp(0.95rem, 2.6vh, 1.25rem); overflow-wrap: anywhere; word-break: break-word; }
-.opt-l2 { font-size: clamp(0.72rem, 1.8vh, 0.9rem); opacity: 0.8; overflow-wrap: anywhere; word-break: break-word; }
+.opt-shape { font-size: clamp(1rem, 2.4vh, 1.25rem); }
+.opt-en { font-weight: 700; font-size: clamp(0.82rem, 2.2vh, 1.08rem); line-height: 1.25; overflow-wrap: anywhere; word-break: break-word; }
+.opt-l2 { font-size: clamp(0.65rem, 1.6vh, 0.8rem); line-height: 1.25; opacity: 0.8; overflow-wrap: anywhere; word-break: break-word; }
 
 .locked-banner { background: #1368ce; }
 .banner {
