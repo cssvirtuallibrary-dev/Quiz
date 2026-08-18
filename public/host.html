@@ -40,8 +40,8 @@
     <div id="questionView" class="fullscreen-view" style="display:none;">
       <p id="questionMeta" class="q-meta"></p>
       <div class="bilingual-question">
-        <div class="q-en" id="questionTextEn"></div>
-        <div class="q-l2" id="questionTextL2"></div>
+        <div class="q-en" id="questionTextVn"></div>
+        <div class="q-l2" id="questionTextEn"></div>
       </div>
       <div class="timer" id="timerDisplay"></div>
       <p id="answerCount" class="answer-count"></p>
@@ -69,8 +69,8 @@
     <div id="reviewView" class="fullscreen-view" style="display:none;">
       <p id="reviewMeta" class="q-meta"></p>
       <div class="bilingual-question">
-        <div class="q-en" id="reviewTextEn"></div>
-        <div class="q-l2" id="reviewTextL2"></div>
+        <div class="q-en" id="reviewTextVn"></div>
+        <div class="q-l2" id="reviewTextEn"></div>
       </div>
       <div class="answers-grid host-answers-grid" id="reviewAnswersGrid"></div>
       <div class="review-nav">
@@ -134,24 +134,24 @@
 
     let timerInterval = null;
 
-    socket.on('question:show', ({ index, total, question_en, question_l2, options_en, options_l2, timeLimit }) => {
+    socket.on('question:show', ({ index, total, question_vn, question_en, options_vn, options_en, timeLimit }) => {
       lobbyView.style.display = 'none';
       closedView.style.display = 'none';
       overView.style.display = 'none';
       questionView.style.display = 'flex';
 
       document.getElementById('questionMeta').textContent = `Question ${index + 1} / ${total}`;
-      document.getElementById('questionTextEn').textContent = question_en;
-      document.getElementById('questionTextL2').textContent = question_l2 || '';
+      document.getElementById('questionTextVn').textContent = question_vn;
+      document.getElementById('questionTextEn').textContent = question_en || '';
       document.getElementById('answerCount').textContent = '';
 
       const grid = document.getElementById('hostAnswersGrid');
       grid.innerHTML = '';
-      options_en.forEach((opt, i) => {
+      options_vn.forEach((opt, i) => {
         if (!opt) return;
         const btn = document.createElement('div');
         btn.className = 'answer-btn static-answer';
-        btn.innerHTML = `<div class="opt-en">${opt}</div><div class="opt-l2">${options_l2[i] || ''}</div>`;
+        btn.innerHTML = `<div class="opt-en">${opt}</div><div class="opt-l2">${options_en[i] || ''}</div>`;
         grid.appendChild(btn);
       });
 
@@ -194,22 +194,22 @@
     document.getElementById('reviewNextBtn').onclick = () => socket.emit('host:reviewNext');
     document.getElementById('reviewPrevBtn').onclick = () => socket.emit('host:reviewPrev');
 
-    socket.on('review:show', ({ index, total, question_en, question_l2, options_en, options_l2, correctIndex, tally }) => {
+    socket.on('review:show', ({ index, total, question_vn, question_en, options_vn, options_en, correctIndex, tally }) => {
       overView.style.display = 'none';
       reviewView.style.display = 'flex';
       document.getElementById('reviewMeta').textContent = `Discussion — Question ${index + 1} / ${total}`;
-      document.getElementById('reviewTextEn').textContent = question_en;
-      document.getElementById('reviewTextL2').textContent = question_l2 || '';
+      document.getElementById('reviewTextVn').textContent = question_vn;
+      document.getElementById('reviewTextEn').textContent = question_en || '';
 
       const grid = document.getElementById('reviewAnswersGrid');
       grid.innerHTML = '';
       const totalAnswers = tally.reduce((a, b) => a + b, 0) || 1;
-      options_en.forEach((opt, i) => {
+      options_vn.forEach((opt, i) => {
         if (!opt) return;
         const btn = document.createElement('div');
         btn.className = 'answer-btn static-answer review-answer' + (i === correctIndex ? ' correct-option' : '');
         const pct = Math.round((tally[i] / totalAnswers) * 100);
-        btn.innerHTML = `<div class="opt-en">${opt}${i === correctIndex ? ' ✅' : ''}</div><div class="opt-l2">${options_l2[i] || ''}</div><div class="tally-bar"><div class="tally-fill" style="width:${pct}%"></div></div><div class="tally-count">${tally[i]} response(s)</div>`;
+        btn.innerHTML = `<div class="opt-en">${opt}${i === correctIndex ? ' ✅' : ''}</div><div class="opt-l2">${options_en[i] || ''}</div><div class="tally-bar"><div class="tally-fill" style="width:${pct}%"></div></div><div class="tally-count">${tally[i]} response(s)</div>`;
         grid.appendChild(btn);
       });
     });

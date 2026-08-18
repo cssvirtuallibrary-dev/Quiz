@@ -53,11 +53,11 @@ function getSheetsClient() {
   return sheetsClientPromise;
 }
 
-// Bilingual question sheet columns (row 1 = header, data starts row 2):
-// A: ID | B: Question_EN | C: Question_L2 |
-// D: OptionA_EN | E: OptionA_L2 | F: OptionB_EN | G: OptionB_L2 |
-// H: OptionC_EN | I: OptionC_L2 | J: OptionD_EN | K: OptionD_L2 |
-// L: CorrectIndex (1-4) | M: TimeLimit (sec) | N: Points
+// Sheet columns (row 1 = header, data starts row 2), matching exactly:
+// A: id | B: Question_VN | C: Question_EN |
+// D: OptionA_VN | E: OptionA_EN | F: OptionB_VN | G: OptionB_EN |
+// H: OptionC_VN | I: OptionC_EN | J: OptionD_VN | K: OptionD_EN |
+// L: CorrectIndex (1=A,2=B,3=C,4=D) | M: timelimit (sec) | N: points
 async function loadQuestionsFromSheet(sheetTab) {
   if (!SPREADSHEET_ID) throw new Error('SPREADSHEET_ID environment variable is not set.');
   const tab = (sheetTab || DEFAULT_QUESTIONS_TAB).trim();
@@ -68,13 +68,13 @@ async function loadQuestionsFromSheet(sheetTab) {
   });
   const rows = res.data.values || [];
   return rows
-    .filter((r) => r[1])
+    .filter((r) => r[1] || r[2])
     .map((r, idx) => ({
       id: r[0] || String(idx + 1),
-      question_en: r[1] || '',
-      question_l2: r[2] || '',
-      options_en: [r[3], r[5], r[7], r[9]],
-      options_l2: [r[4], r[6], r[8], r[10]],
+      question_vn: r[1] || '',
+      question_en: r[2] || '',
+      options_vn: [r[3], r[5], r[7], r[9]],
+      options_en: [r[4], r[6], r[8], r[10]],
       correctIndex: parseInt(r[11], 10) - 1,
       timeLimit: parseInt(r[12], 10) || 20,
       points: parseInt(r[13], 10) || 1000,
@@ -170,10 +170,10 @@ function sendQuestion(game) {
   io.to(game.pin).emit('question:show', {
     index: game.currentIndex,
     total: game.questions.length,
+    question_vn: q.question_vn,
     question_en: q.question_en,
-    question_l2: q.question_l2,
+    options_vn: q.options_vn,
     options_en: q.options_en,
-    options_l2: q.options_l2,
     timeLimit: q.timeLimit,
   });
 
@@ -213,13 +213,13 @@ function closeQuestion(game) {
 
   game.answerHistory.push({
     index: game.currentIndex,
+    question_vn: q.question_vn,
     question_en: q.question_en,
-    question_l2: q.question_l2,
+    options_vn: q.options_vn,
     options_en: q.options_en,
-    options_l2: q.options_l2,
     correctIndex: q.correctIndex,
     correctText_en: q.options_en[q.correctIndex],
-    correctText_l2: q.options_l2[q.correctIndex],
+    correctText_vn: q.options_vn[q.correctIndex],
     tally,
     perPlayerAnswers,
   });
@@ -345,10 +345,10 @@ io.on('connection', (socket) => {
     io.to(game.pin).emit('review:show', {
       index: game.reviewIndex,
       total: game.answerHistory.length,
+      question_vn: h.question_vn,
       question_en: h.question_en,
-      question_l2: h.question_l2,
+      options_vn: h.options_vn,
       options_en: h.options_en,
-      options_l2: h.options_l2,
       correctIndex: h.correctIndex,
       tally: h.tally,
     });
