@@ -285,13 +285,20 @@ body.in-game .card {
   max-width: 100%;
   margin: 0;
   border-radius: 0;
-  padding: 10px max(18px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  /* Generous, symmetric left/right padding so the answer grid never sits
+     flush against the true edge of the phone screen. Some mobile browsers
+     report 100vw as slightly wider than the actual visible viewport (it
+     can include the scrollbar gutter width), which was pushing right-
+     column content a few pixels past what's visible and clipping the
+     rounded corners right at the edge. */
+  padding: 10px max(20px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   gap: 14px;
   overflow-y: auto;
   overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 .player-question-card {
@@ -322,6 +329,9 @@ body.in-game .card {
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   display: grid;
   /* minmax(0, 1fr) instead of plain 1fr -- without this, each grid track's
      implicit minimum width defaults to its content's min-content size, so
