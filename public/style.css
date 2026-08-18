@@ -217,7 +217,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .answers-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: 1fr 1fr;
   gap: clamp(10px, 1.6vh, 20px);
   width: 96vw;
@@ -285,7 +285,7 @@ body.in-game .card {
   max-width: 100%;
   margin: 0;
   border-radius: 0;
-  padding: 10px max(16px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  padding: 10px max(18px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
@@ -323,7 +323,15 @@ body.in-game .card {
   min-height: 0;
   min-width: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, 1fr) instead of plain 1fr -- without this, each grid track's
+     implicit minimum width defaults to its content's min-content size, so
+     a long unbroken word/phrase can force a column wider than its fair
+     50% share. In portrait mode (narrow screens) this pushed the right
+     column past the edge of the phone, and since the parent .card has
+     overflow-x:hidden to stop horizontal scrolling, that overflow got
+     sliced off -- clipping exactly the rounded corner of the right-hand
+     boxes. minmax(0, 1fr) lets columns actually shrink to fit evenly. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: minmax(min-content, 1fr);
   gap: 10px;
 }
@@ -339,8 +347,8 @@ body.in-game .card {
   min-width: 0;
 }
 .opt-shape { font-size: clamp(1.1rem, 2.8vh, 1.4rem); }
-.opt-en { font-weight: 700; font-size: clamp(0.95rem, 2.6vh, 1.25rem); overflow-wrap: break-word; }
-.opt-l2 { font-size: clamp(0.72rem, 1.8vh, 0.9rem); opacity: 0.8; overflow-wrap: break-word; }
+.opt-en { font-weight: 700; font-size: clamp(0.95rem, 2.6vh, 1.25rem); overflow-wrap: anywhere; word-break: break-word; }
+.opt-l2 { font-size: clamp(0.72rem, 1.8vh, 0.9rem); opacity: 0.8; overflow-wrap: anywhere; word-break: break-word; }
 
 .locked-banner { background: #1368ce; }
 .banner {
