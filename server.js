@@ -53,6 +53,30 @@ function getSheetsClient() {
   return sheetsClientPromise;
 }
 
+// Returns the list of tab (sheet) names in the spreadsheet, excluding the
+// results-logging tabs, so the host can pick which quiz to run from a
+// dropdown instead of typing an exact tab name from memory.
+async function listQuestionTabs() {
+  if (!SPREADSHEET_ID) throw new Error('SPREADSHEET_ID environment variable is not set.');
+  const sheets = await getSheetsClient();
+  const res = await sheets.spreadsheets.get({
+    spreadsheetId: SPREADSHEET_ID,
+    fields: 'sheets.properties.title',
+  });
+  const titles = (res.data.sheets || []).map((s) => s.properties.title);
+  return titles.filter((t) => t !== RESULTS_SHEET && t !== RESULTS_DETAIL_SHEET);
+}
+
+app.get('/api/tabs', async (req, res) => {
+  try {
+    const tabs = await listQuestionTabs();
+    res.json({ tabs });
+  } catch (err) {
+    console.error('Failed to list tabs:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Sheet columns (row 1 = header, data starts row 2), matching exactly:
 // A: id | B: Question_VN | C: Question_EN |
 // D: OptionA_VN | E: OptionA_EN | F: OptionB_VN | G: OptionB_EN |

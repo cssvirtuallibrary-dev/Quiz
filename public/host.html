@@ -14,8 +14,9 @@
       <h1>QuizClash — Host</h1>
       <label class="field-label">Session Name (e.g. "Team A - Morning")</label>
       <input type="text" id="sessionNameInput" placeholder="Session name" maxlength="60" />
-      <label class="field-label">Question Sheet Tab</label>
-      <input type="text" id="sheetTabInput" placeholder="Questions" value="Questions" />
+      <label class="field-label">Question Sheet Tab (choose which quiz to run)</label>
+      <select id="sheetTabSelect"><option value="">Loading tabs…</option></select>
+      <p id="tabLoadError" class="error-text"></p>
       <button id="createBtn">Create Game</button>
       <p id="createError" class="error-text"></p>
     </div>
@@ -102,9 +103,37 @@
       else document.exitFullscreen();
     };
 
+    // Populate the "Question Sheet Tab" dropdown with the real tab names
+    // pulled live from the Google Sheet, so the host picks from a list
+    // instead of typing an exact tab name from memory.
+    async function loadTabs() {
+      const select = document.getElementById('sheetTabSelect');
+      const errEl = document.getElementById('tabLoadError');
+      try {
+        const res = await fetch('/api/tabs');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to load tabs');
+        select.innerHTML = '';
+        if (!data.tabs.length) {
+          select.innerHTML = '<option value="">No question tabs found</option>';
+          return;
+        }
+        data.tabs.forEach((tab) => {
+          const opt = document.createElement('option');
+          opt.value = tab;
+          opt.textContent = tab;
+          select.appendChild(opt);
+        });
+      } catch (err) {
+        errEl.textContent = `Could not load sheet tabs: ${err.message}`;
+        select.innerHTML = '<option value="Questions">Questions (default)</option>';
+      }
+    }
+    loadTabs();
+
     document.getElementById('createBtn').onclick = () => {
       const sessionName = document.getElementById('sessionNameInput').value.trim() || 'Untitled Session';
-      const sheetTab = document.getElementById('sheetTabInput').value.trim() || 'Questions';
+      const sheetTab = document.getElementById('sheetTabSelect').value.trim() || 'Questions';
       socket.emit('host:create', { sessionName, sheetTab, origin: window.location.origin });
     };
 
