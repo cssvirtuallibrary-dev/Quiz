@@ -77,22 +77,63 @@ app.get('/api/tabs', async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Google Drive image link helper
+// ---------------------------------------------------------------------------
+// Hosts can paste a normal Google Drive "share" link (e.g.
+// https://drive.google.com/file/d/FILE_ID/view?usp=sharing) directly into
+// the sheet. This converts it into a URL that actually renders as an
+// embeddable <img>, since Drive's regular "view" links load an HTML viewer
+// page, not the raw image. Requires the file's sharing setting to be
+// "Anyone with the link" (Viewer).
+function driveImageUrl(raw) {
+  const value = (raw || '').toString().trim();
+  if (!value) return '';
+
+  // Already looks like a direct image URL (not a Drive share link) -- use as-is.
+  if (!/drive\.google\.com/.test(value) && !/^[a-zA-Z0-9_-]{20,}$/.test(value)) {
+    return value;
+  }
+
+  let fileId = null;
+  const patterns = [
+    /\/d\/([a-zA-Z0-9_-]+)/,      // .../file/d/FILE_ID/view
+    /[?&]id=([a-zA-Z0-9_-]+)/,    // ...?id=FILE_ID
+  ];
+  for (const re of patterns) {
+    const m = value.match(re);
+    if (m) { fileId = m[1]; break; }
+  }
+  // If the cell just contains a bare Drive file ID with no URL wrapper.
+  if (!fileId && /^[a-zA-Z0-9_-]{20,}$/.test(value)) fileId = value;
+
+  if (!fileId) return value; // fall back to whatever was pasted
+
+  // "thumbnail" endpoint renders reliably as an embeddable image and
+  // supports a size hint via sz=wNNN.
+  return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
+}
+
 // Sheet columns (row 1 = header, data starts row 2), matching exactly:
 // A: id | B: Question_VN | C: Question_EN |
 // D: OptionA_VN | E: OptionA_EN | F: OptionB_VN | G: OptionB_EN |
 // H: OptionC_VN | I: OptionC_EN | J: OptionD_VN | K: OptionD_EN |
-// L: CorrectIndex (1=A,2=B,3=C,4=D) | M: timelimit (sec) | N: points
+// L: CorrectIndex (1=A,2=B,3=C,4=D) | M: timelimit (sec) | N: points |
+// O: QuestionImage | P: OptionA_Image | Q: OptionB_Image |
+// R: OptionC_Image | S: OptionD_Image
+// (Image columns are optional -- a row can mix text-only, image-only, or
+// both text + image per question/option.)
 async function loadQuestionsFromSheet(sheetTab) {
   if (!SPREADSHEET_ID) throw new Error('SPREADSHEET_ID environment variable is not set.');
   const tab = (sheetTab || DEFAULT_QUESTIONS_TAB).trim();
   const sheets = await getSheetsClient();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${tab}!A2:N`,
+    range: `${tab}!A2:S`,
   });
   const rows = res.data.values || [];
   return rows
-    .filter((r) => r[1] || r[2])
+    .filter((r) => r[1] || r[2] || r[14])
     .map((r, idx) => ({
       id: r[0] || String(idx + 1),
       question_vn: r[1] || '',
@@ -102,6 +143,8 @@ async function loadQuestionsFromSheet(sheetTab) {
       correctIndex: parseInt(r[11], 10) - 1,
       timeLimit: parseInt(r[12], 10) || 20,
       points: parseInt(r[13], 10) || 1000,
+      question_image: driveImageUrl(r[14]),
+      options_images: [driveImageUrl(r[15]), driveImageUrl(r[16]), driveImageUrl(r[17]), driveImageUrl(r[18])],
     }));
 }
 
@@ -198,6 +241,8 @@ function sendQuestion(game) {
     question_en: q.question_en,
     options_vn: q.options_vn,
     options_en: q.options_en,
+    question_image: q.question_image,
+    options_images: q.options_images,
     timeLimit: q.timeLimit,
   });
 
@@ -241,6 +286,8 @@ function closeQuestion(game) {
     question_en: q.question_en,
     options_vn: q.options_vn,
     options_en: q.options_en,
+    question_image: q.question_image,
+    options_images: q.options_images,
     correctIndex: q.correctIndex,
     correctText_en: q.options_en[q.correctIndex],
     correctText_vn: q.options_vn[q.correctIndex],
@@ -373,6 +420,8 @@ io.on('connection', (socket) => {
       question_en: h.question_en,
       options_vn: h.options_vn,
       options_en: h.options_en,
+      question_image: h.question_image,
+      options_images: h.options_images,
       correctIndex: h.correctIndex,
       tally: h.tally,
     });
