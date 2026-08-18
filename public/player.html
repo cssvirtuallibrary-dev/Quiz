@@ -7,6 +7,15 @@
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- Floating language toggle, visible during the live game so players can
+       switch anytime. "1" = Language 1 (as entered in the Google Sheet's
+       Question_EN / OptionX_EN columns, e.g. Vietnamese). "2" = Language 2
+       (the Question_L2 / OptionX_L2 columns, e.g. English). -->
+  <div class="lang-toggle-floating" id="floatingLangToggle" style="display:none;">
+    <button id="floatLang1Btn">1</button>
+    <button id="floatLang2Btn">2</button>
+  </div>
+
   <div class="container">
     <h1>🧠 QuizClash</h1>
 
@@ -14,6 +23,11 @@
     <div id="joinView" class="card">
       <input type="text" id="pinInput" placeholder="Game PIN" inputmode="numeric" maxlength="6" />
       <input type="text" id="nameInput" placeholder="Your nickname" maxlength="20" />
+      <label class="field-label">Preferred language / Ngôn ngữ hiển thị</label>
+      <div class="lang-toggle" id="joinLangToggle">
+        <button id="lang1Btn">Language 1</button>
+        <button id="lang2Btn">Language 2</button>
+      </div>
       <button id="joinBtn">Join Game</button>
       <p id="joinError" class="error-text"></p>
     </div>
@@ -22,7 +36,7 @@
     <div id="waitingView" class="card" style="display:none;">
       <h2>You're in! 🎉</h2>
       <p>Waiting for the host to start the game...</p>
-      <p class="assist-note">📽️ Can't see the projector well? Questions and answers will also show right here on your phone.</p>
+      <p class="assist-note">📽️ Can't see the projector well? Questions and answers will also show right here on your phone, in your chosen language.</p>
     </div>
 
     <!-- QUESTION -->
@@ -31,7 +45,6 @@
         <div class="timer" id="timerDisplay"></div>
         <div class="bilingual-question player-bilingual">
           <div class="q-en" id="pQuestionEn"></div>
-          <div class="q-l2" id="pQuestionL2"></div>
         </div>
         <div class="answers-grid" id="answersGrid"></div>
       </div>
@@ -56,7 +69,6 @@
       <p id="reviewMeta" class="q-meta"></p>
       <div class="bilingual-question player-bilingual">
         <div class="q-en" id="rQuestionEn"></div>
-        <div class="q-l2" id="rQuestionL2"></div>
       </div>
       <div class="answers-grid" id="reviewAnswersGrid"></div>
     </div>
@@ -72,15 +84,33 @@
     const lockedView = document.getElementById('lockedView');
     const overView = document.getElementById('overView');
     const reviewView = document.getElementById('reviewView');
+    const floatingLangToggle = document.getElementById('floatingLangToggle');
 
-    // Toggle a body class so CSS can hide the header / go edge-to-edge
-    // while an active game screen is showing, so everything fits without
-    // needing to scroll the page.
+    // ---- Language preference: 'en' = Language 1 column, 'l2' = Language 2 column ----
+    let lang = localStorage.getItem('quizclash_lang') || 'en';
+
+    function setLang(newLang) {
+      lang = newLang;
+      localStorage.setItem('quizclash_lang', lang);
+      document.getElementById('lang1Btn').classList.toggle('active', lang === 'en');
+      document.getElementById('lang2Btn').classList.toggle('active', lang === 'l2');
+      document.getElementById('floatLang1Btn').classList.toggle('active', lang === 'en');
+      document.getElementById('floatLang2Btn').classList.toggle('active', lang === 'l2');
+      // Re-render whichever screen is currently active with the new language
+      if (lastQuestionPayload && questionView.style.display !== 'none') renderQuestion(lastQuestionPayload);
+      if (lastReviewPayload && reviewView.style.display !== 'none') renderReview(lastReviewPayload);
+    }
+    document.getElementById('lang1Btn').onclick = () => setLang('en');
+    document.getElementById('lang2Btn').onclick = () => setLang('l2');
+    document.getElementById('floatLang1Btn').onclick = () => setLang('en');
+    document.getElementById('floatLang2Btn').onclick = () => setLang('l2');
+    setLang(lang);
+
     function setInGame(active) {
       document.body.classList.toggle('in-game', active);
+      floatingLangToggle.style.display = active ? 'flex' : 'none';
     }
 
-    // Pre-fill PIN from QR code link: player.html?pin=123456
     const urlParams = new URLSearchParams(window.location.search);
     const pinFromUrl = urlParams.get('pin');
     if (pinFromUrl) document.getElementById('pinInput').value = pinFromUrl;
@@ -107,25 +137,24 @@
 
     let timerInterval = null;
     let answered = false;
+    let lastQuestionPayload = null;
+    let lastReviewPayload = null;
     const shapeLabels = ['▲', '◆', '●', '■'];
 
-    socket.on('question:show', ({ timeLimit, options_en, options_l2, question_en, question_l2 }) => {
-      waitingView.style.display = 'none';
-      lockedView.style.display = 'none';
-      questionView.style.display = 'block';
-      setInGame(true);
-      answered = false;
-
-      document.getElementById('pQuestionEn').textContent = question_en;
-      document.getElementById('pQuestionL2').textContent = question_l2 || '';
+    function renderQuestion(data) {
+      const { options_en, options_l2, question_en, question_l2 } = data;
+      const qText = lang === 'en' ? question_en : (question_l2 || question_en);
+      document.getElementById('pQuestionEn').textContent = qText;
 
       const grid = document.getElementById('answersGrid');
       grid.innerHTML = '';
-      options_en.forEach((opt, i) => {
-        if (!opt) return;
+      options_en.forEach((optEn, i) => {
+        if (!optEn) return;
+        const optL2 = options_l2[i];
+        const text = lang === 'en' ? optEn : (optL2 || optEn);
         const btn = document.createElement('button');
         btn.className = 'answer-btn player-answer-btn';
-        btn.innerHTML = `<span class="opt-shape">${shapeLabels[i] || ''}</span><span class="opt-en">${opt}</span><span class="opt-l2">${options_l2[i] || ''}</span>`;
+        btn.innerHTML = `<span class="opt-shape">${shapeLabels[i] || ''}</span><span class="opt-en">${text}</span>`;
         btn.onclick = () => {
           if (answered) return;
           answered = true;
@@ -135,8 +164,18 @@
         };
         grid.appendChild(btn);
       });
+    }
 
-      let remaining = timeLimit;
+    socket.on('question:show', (data) => {
+      waitingView.style.display = 'none';
+      lockedView.style.display = 'none';
+      questionView.style.display = 'block';
+      setInGame(true);
+      answered = false;
+      lastQuestionPayload = data;
+      renderQuestion(data);
+
+      let remaining = data.timeLimit;
       const timerEl = document.getElementById('timerDisplay');
       timerEl.textContent = `⏱ ${remaining}s`;
       if (timerInterval) clearInterval(timerInterval);
@@ -179,23 +218,31 @@
       });
     });
 
-    socket.on('review:show', ({ index, total, question_en, question_l2, options_en, options_l2, correctIndex, tally }) => {
-      overView.style.display = 'none';
-      reviewView.style.display = 'block';
-      setInGame(true);
+    function renderReview(data) {
+      const { index, total, question_en, question_l2, options_en, options_l2, correctIndex } = data;
       document.getElementById('reviewMeta').textContent = `Discussion — Question ${index + 1} / ${total}`;
-      document.getElementById('rQuestionEn').textContent = question_en;
-      document.getElementById('rQuestionL2').textContent = question_l2 || '';
+      const qText = lang === 'en' ? question_en : (question_l2 || question_en);
+      document.getElementById('rQuestionEn').textContent = qText;
 
       const grid = document.getElementById('reviewAnswersGrid');
       grid.innerHTML = '';
-      options_en.forEach((opt, i) => {
-        if (!opt) return;
+      options_en.forEach((optEn, i) => {
+        if (!optEn) return;
+        const optL2 = options_l2[i];
+        const text = lang === 'en' ? optEn : (optL2 || optEn);
         const div = document.createElement('div');
         div.className = 'answer-btn static-answer player-answer-btn' + (i === correctIndex ? ' correct-option' : '');
-        div.innerHTML = `<span class="opt-shape">${shapeLabels[i] || ''}</span><span class="opt-en">${opt}${i === correctIndex ? ' ✅' : ''}</span><span class="opt-l2">${options_l2[i] || ''}</span>`;
+        div.innerHTML = `<span class="opt-shape">${shapeLabels[i] || ''}</span><span class="opt-en">${text}${i === correctIndex ? ' ✅' : ''}</span>`;
         grid.appendChild(div);
       });
+    }
+
+    socket.on('review:show', (data) => {
+      overView.style.display = 'none';
+      reviewView.style.display = 'block';
+      setInGame(true);
+      lastReviewPayload = data;
+      renderReview(data);
     });
   </script>
 </body>
