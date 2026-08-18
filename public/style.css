@@ -428,6 +428,12 @@ a.link-btn {
   background: #eee;
 }
 
+/* Slightly smaller on the host/projector question box specifically, to
+   leave more visual balance with the larger answer grid below it. */
+#questionBox .q-image, #reviewBox .q-image {
+  max-height: 18vh;
+}
+
 /* Answer option image -- shown inside each colored answer box, above any
    option text. Sized smaller than the question image since up to 4 of
    these need to fit on screen at once (2x2 grid). */
@@ -440,6 +446,15 @@ a.link-btn {
   border-radius: 12px;
   margin: 0 auto 8px;
   background: rgba(255,255,255,0.25);
+}
+
+/* Host/projector answer boxes: images were filling almost the whole box,
+   crowding out the response tally bar and count during discussion review.
+   Shrink them specifically on the host screen so there's always room left
+   for the tally/text underneath, even on a large projector display. */
+.host-answers-grid .opt-image {
+  width: min(36%, 130px);
+  margin: 0 auto 6px;
 }
 
 /* Player screen: smaller boxes, smaller images so text (if present) still
