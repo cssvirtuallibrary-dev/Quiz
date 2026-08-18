@@ -42,7 +42,8 @@
             <button id="qLangEnBtn">EN</button>
           </span>
         </div>
-        <div class="bilingual-question player-bilingual">
+        <div class="bilingual-question player-bilingual" id="questionBox">
+          <img id="pQuestionImg" class="q-image" style="display:none;" alt="" />
           <div class="q-en" id="pQuestionText"></div>
         </div>
         <div class="answers-grid" id="answersGrid"></div>
@@ -72,7 +73,8 @@
           <button id="rLangEnBtn">EN</button>
         </span>
       </div>
-      <div class="bilingual-question player-bilingual">
+      <div class="bilingual-question player-bilingual" id="reviewBox">
+        <img id="rQuestionImg" class="q-image" style="display:none;" alt="" />
         <div class="q-en" id="rQuestionText"></div>
       </div>
       <div class="answers-grid" id="reviewAnswersGrid"></div>
@@ -99,15 +101,6 @@
 
     // ---- Language preference: 'vn' = Vietnamese columns, 'en' = English columns ----
     let lang = localStorage.getItem('quizclash_lang') || 'vn';
-
-    const allLangButtons = () => [
-      document.getElementById('langVnBtn'),
-      document.getElementById('langEnBtn'),
-      document.getElementById('qLangVnBtn'),
-      document.getElementById('qLangEnBtn'),
-      document.getElementById('rLangVnBtn'),
-      document.getElementById('rLangEnBtn'),
-    ];
 
     function setLang(newLang) {
       lang = newLang;
@@ -158,20 +151,39 @@
       document.getElementById('joinError').textContent = msg;
     });
 
+    // Builds the inner HTML for one answer button, supporting image-only,
+    // text-only, or image+text (image shown above the text).
+    function buildAnswerInner(shape, text, imageUrl, extraSuffix) {
+      const shapeHtml = `<span class="opt-shape">${shape || ''}</span>`;
+      const imgHtml = imageUrl ? `<img class="opt-image" src="${imageUrl}" alt="" />` : '';
+      const textHtml = text ? `<span class="opt-en">${text}${extraSuffix || ''}</span>` : (extraSuffix ? `<span class="opt-en">${extraSuffix}</span>` : '');
+      return shapeHtml + imgHtml + textHtml;
+    }
+
     function renderQuestion(data) {
-      const { options_vn, options_en, question_vn, question_en } = data;
+      const { options_vn, options_en, question_vn, question_en, question_image, options_images } = data;
       const qText = lang === 'vn' ? question_vn : (question_en || question_vn);
-      document.getElementById('pQuestionText').textContent = qText;
+      document.getElementById('pQuestionText').textContent = qText || '';
+
+      const qImg = document.getElementById('pQuestionImg');
+      if (question_image) {
+        qImg.src = question_image;
+        qImg.style.display = 'block';
+      } else {
+        qImg.removeAttribute('src');
+        qImg.style.display = 'none';
+      }
 
       const grid = document.getElementById('answersGrid');
       grid.innerHTML = '';
       options_vn.forEach((optVn, i) => {
-        if (!optVn) return;
+        const img = options_images && options_images[i];
         const optEn = options_en[i];
+        if (!optVn && !optEn && !img) return;
         const text = lang === 'vn' ? optVn : (optEn || optVn);
         const btn = document.createElement('button');
         btn.className = 'answer-btn player-answer-btn';
-        btn.innerHTML = `<span class="opt-shape">${shapeLabels[i] || ''}</span><span class="opt-en">${text}</span>`;
+        btn.innerHTML = buildAnswerInner(shapeLabels[i], text, img, '');
         btn.onclick = () => {
           if (answered) return;
           answered = true;
@@ -236,20 +248,31 @@
     });
 
     function renderReview(data) {
-      const { index, total, question_vn, question_en, options_vn, options_en, correctIndex } = data;
+      const { index, total, question_vn, question_en, options_vn, options_en, question_image, options_images, correctIndex } = data;
       document.getElementById('reviewMeta').textContent = `Discussion — Q${index + 1}/${total}`;
       const qText = lang === 'vn' ? question_vn : (question_en || question_vn);
-      document.getElementById('rQuestionText').textContent = qText;
+      document.getElementById('rQuestionText').textContent = qText || '';
+
+      const rImg = document.getElementById('rQuestionImg');
+      if (question_image) {
+        rImg.src = question_image;
+        rImg.style.display = 'block';
+      } else {
+        rImg.removeAttribute('src');
+        rImg.style.display = 'none';
+      }
 
       const grid = document.getElementById('reviewAnswersGrid');
       grid.innerHTML = '';
       options_vn.forEach((optVn, i) => {
-        if (!optVn) return;
+        const img = options_images && options_images[i];
         const optEn = options_en[i];
+        if (!optVn && !optEn && !img) return;
         const text = lang === 'vn' ? optVn : (optEn || optVn);
         const div = document.createElement('div');
         div.className = 'answer-btn static-answer player-answer-btn' + (i === correctIndex ? ' correct-option' : '');
-        div.innerHTML = `<span class="opt-shape">${shapeLabels[i] || ''}</span><span class="opt-en">${text}${i === correctIndex ? ' ✅' : ''}</span>`;
+        const suffix = i === correctIndex ? ' ✅' : '';
+        div.innerHTML = buildAnswerInner(shapeLabels[i], text, img, suffix);
         grid.appendChild(div);
       });
     }

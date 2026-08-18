@@ -406,3 +406,49 @@ a.link-btn {
   color: #fff;
   text-decoration: underline;
 }
+
+
+/* ---------- IMAGE SUPPORT: questions & answers can be image-only,
+   text-only, or image+text together. Images are expected to be roughly
+   square (per content plan), so we use aspect-ratio:1/1 with object-fit
+   to avoid stretching/cropping surprises, and cap their size so a large
+   photo never pushes the rest of the layout off-screen. ---------- */
+
+/* Question image -- shown inside the white question box, above any text. */
+.q-image {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 24vh;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  border-radius: 12px;
+  margin: 0 auto 10px;
+  background: #eee;
+}
+
+/* Answer option image -- shown inside each colored answer box, above any
+   option text. Sized smaller than the question image since up to 4 of
+   these need to fit on screen at once (2x2 grid). */
+.opt-image {
+  display: block;
+  width: min(55%, 220px);
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 12px;
+  margin: 0 auto 8px;
+  background: rgba(255,255,255,0.25);
+}
+
+/* Player screen: smaller boxes, smaller images so text (if present) still
+   has room, and so the 2x2 grid never forces vertical scrolling. */
+.player-bilingual .q-image {
+  max-height: 16dvh;
+  margin-bottom: 8px;
+}
+.player-answer-btn .opt-image {
+  width: min(60%, 110px);
+  margin-bottom: 4px;
+}

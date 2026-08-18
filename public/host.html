@@ -40,7 +40,8 @@
     <!-- QUESTION VIEW -->
     <div id="questionView" class="fullscreen-view" style="display:none;">
       <p id="questionMeta" class="q-meta"></p>
-      <div class="bilingual-question">
+      <div class="bilingual-question" id="questionBox">
+        <img id="questionImg" class="q-image" style="display:none;" alt="" />
         <div class="q-en" id="questionTextVn"></div>
         <div class="q-l2" id="questionTextEn"></div>
       </div>
@@ -69,7 +70,8 @@
     <!-- REVIEW / DISCUSSION VIEW -->
     <div id="reviewView" class="fullscreen-view" style="display:none;">
       <p id="reviewMeta" class="q-meta"></p>
-      <div class="bilingual-question">
+      <div class="bilingual-question" id="reviewBox">
+        <img id="reviewImg" class="q-image" style="display:none;" alt="" />
         <div class="q-en" id="reviewTextVn"></div>
         <div class="q-l2" id="reviewTextEn"></div>
       </div>
@@ -163,7 +165,18 @@
 
     let timerInterval = null;
 
-    socket.on('question:show', ({ index, total, question_vn, question_en, options_vn, options_en, timeLimit }) => {
+    // Builds the inner HTML for one answer box, supporting image-only,
+    // text-only, or image+text (image shown above the text).
+    function buildAnswerInner(textVn, textEn, imageUrl, extraSuffix) {
+      const imgHtml = imageUrl ? `<img class="opt-image" src="${imageUrl}" alt="" />` : '';
+      const hasText = !!(textVn || textEn);
+      const textHtml = hasText
+        ? `<div class="opt-en">${textVn || ''}${extraSuffix || ''}</div><div class="opt-l2">${textEn || ''}</div>`
+        : (extraSuffix ? `<div class="opt-en">${extraSuffix}</div>` : '');
+      return imgHtml + textHtml;
+    }
+
+    socket.on('question:show', ({ index, total, question_vn, question_en, options_vn, options_en, question_image, options_images, timeLimit }) => {
       lobbyView.style.display = 'none';
       closedView.style.display = 'none';
       overView.style.display = 'none';
@@ -174,13 +187,23 @@
       document.getElementById('questionTextEn').textContent = question_en || '';
       document.getElementById('answerCount').textContent = '';
 
+      const qImg = document.getElementById('questionImg');
+      if (question_image) {
+        qImg.src = question_image;
+        qImg.style.display = 'block';
+      } else {
+        qImg.removeAttribute('src');
+        qImg.style.display = 'none';
+      }
+
       const grid = document.getElementById('hostAnswersGrid');
       grid.innerHTML = '';
       options_vn.forEach((opt, i) => {
-        if (!opt) return;
+        const img = options_images && options_images[i];
+        if (!opt && !img) return;
         const btn = document.createElement('div');
         btn.className = 'answer-btn static-answer';
-        btn.innerHTML = `<div class="opt-en">${opt}</div><div class="opt-l2">${options_en[i] || ''}</div>`;
+        btn.innerHTML = buildAnswerInner(opt, options_en[i], img, '');
         grid.appendChild(btn);
       });
 
@@ -223,22 +246,34 @@
     document.getElementById('reviewNextBtn').onclick = () => socket.emit('host:reviewNext');
     document.getElementById('reviewPrevBtn').onclick = () => socket.emit('host:reviewPrev');
 
-    socket.on('review:show', ({ index, total, question_vn, question_en, options_vn, options_en, correctIndex, tally }) => {
+    socket.on('review:show', ({ index, total, question_vn, question_en, options_vn, options_en, question_image, options_images, correctIndex, tally }) => {
       overView.style.display = 'none';
       reviewView.style.display = 'flex';
       document.getElementById('reviewMeta').textContent = `Discussion — Question ${index + 1} / ${total}`;
       document.getElementById('reviewTextVn').textContent = question_vn;
       document.getElementById('reviewTextEn').textContent = question_en || '';
 
+      const rImg = document.getElementById('reviewImg');
+      if (question_image) {
+        rImg.src = question_image;
+        rImg.style.display = 'block';
+      } else {
+        rImg.removeAttribute('src');
+        rImg.style.display = 'none';
+      }
+
       const grid = document.getElementById('reviewAnswersGrid');
       grid.innerHTML = '';
       const totalAnswers = tally.reduce((a, b) => a + b, 0) || 1;
       options_vn.forEach((opt, i) => {
-        if (!opt) return;
+        const img = options_images && options_images[i];
+        if (!opt && !img) return;
         const btn = document.createElement('div');
         btn.className = 'answer-btn static-answer review-answer' + (i === correctIndex ? ' correct-option' : '');
         const pct = Math.round((tally[i] / totalAnswers) * 100);
-        btn.innerHTML = `<div class="opt-en">${opt}${i === correctIndex ? ' ✅' : ''}</div><div class="opt-l2">${options_en[i] || ''}</div><div class="tally-bar"><div class="tally-fill" style="width:${pct}%"></div></div><div class="tally-count">${tally[i]} response(s)</div>`;
+        const suffix = i === correctIndex ? ' ✅' : '';
+        btn.innerHTML = buildAnswerInner(opt, options_en[i], img, suffix) +
+          `<div class="tally-bar"><div class="tally-fill" style="width:${pct}%"></div></div><div class="tally-count">${tally[i]} response(s)</div>`;
         grid.appendChild(btn);
       });
     });
